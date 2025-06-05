@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Centralized Logging Server{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- System Overview Cards -->
+    <div class="col-12 mb-4">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Total Logs Today</h6>
+                                <h3 class="mb-0" id="total-logs">-</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-list-alt fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Ingestion Rate</h6>
+                                <h3 class="mb-0" id="ingestion-rate">-</h3>
+                                <small>logs/min</small>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-tachometer-alt fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Error Rate</h6>
+                                <h3 class="mb-0" id="error-rate">-</h3>
+                                <small>%</small>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-exclamation-triangle fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Disk Usage</h6>
+                                <h3 class="mb-0" id="disk-usage">-</h3>
+                                <small>%</small>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-hdd fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Charts Row -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Log Ingestion Over Time
+                </h5>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="timeRange" id="time1h" value="1h" checked>
+                    <label class="btn btn-outline-primary" for="time1h">1H</label>
+                    
+                    <input type="radio" class="btn-check" name="timeRange" id="time6h" value="6h">
+                    <label class="btn btn-outline-primary" for="time6h">6H</label>
+                    
+                    <input type="radio" class="btn-check" name="timeRange" id="time24h" value="24h">
+                    <label class="btn btn-outline-primary" for="time24h">24H</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="ingestionChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>Log Sources
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="sourcesChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- System Status Row -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-heartbeat me-2"></i>System Health
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-database fa-lg text-primary"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <div class="fw-bold">Redis</div>
+                                <span class="badge bg-success" id="redis-status">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-eye fa-lg text-info"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <div class="fw-bold">File Monitor</div>
+                                <span class="badge bg-success" id="monitor-status">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-clock fa-lg text-warning"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <div class="fw-bold">Scheduler</div>
+                                <span class="badge bg-success" id="scheduler-status">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-cogs fa-lg text-secondary"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <div class="fw-bold">Log Processor</div>
+                                <span class="badge bg-success" id="processor-status">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>Overall Health Score</span>
+                        <span class="fw-bold" id="health-score">100%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-success" role="progressbar" 
+                             style="width: 100%" id="health-progress"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Activity -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-clock me-2"></i>Recent Activity
+                </h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshActivity()">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="recent-activity" class="activity-feed">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Loading recent activity...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Active Sources -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-server me-2"></i>Active Log Sources
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th>Status</th>
+                                <th>Last Seen</th>
+                                <th>Logs Today</th>
+                                <th>Error Rate</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sources-table">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                    Loading sources...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/charts_config.js') }}"></script>
+<script>
+// Dashboard-specific JavaScript
+$(document).ready(function() {
+    initializeDashboard();
+    startRealTimeUpdates();
+});
+
+function initializeDashboard() {
+    // Initialize charts
+    initializeIngestionChart();
+    initializeSourcesChart();
+    
+    // Load initial data
+    loadDashboardStats();
+    loadRecentActivity();
+    loadActiveSources();
+    
+    // Setup event listeners
+    $('input[name="timeRange"]').change(function() {
+        updateIngestionChart($(this).val());
+    });
+}
+
+function startRealTimeUpdates() {
+    // Update dashboard every 5 seconds
+    setInterval(function() {
+        if (settings.autoRefresh) {
+            loadDashboardStats();
+            loadRecentActivity();
+            loadActiveSources();
+        }
+    }, settings.refreshInterval * 1000);
+}
+
+function loadDashboardStats() {
+    $.get('/api/dashboard/stats')
+        .done(function(data) {
+            updateStatsCards(data);
+            updateHealthStatus(data);
+        })
+        .fail(function() {
+            showError('Failed to load dashboard statistics');
+        });
+}
+
+function updateStatsCards(data) {
+    $('#total-logs').text(formatNumber(data.total_logs_today || 0));
+    $('#ingestion-rate').text(formatNumber(data.ingestion_rate || 0));
+    $('#error-rate').text(formatPercentage(data.error_rate || 0));
+    $('#disk-usage').text(formatPercentage(data.disk_usage || 0));
+}
+
+function updateHealthStatus(data) {
+    const health = data.server_health || {};
+    const components = health.components || {};
+    
+    // Update component statuses
+    updateComponentStatus('redis', components.redis);
+    updateComponentStatus('monitor', components.file_monitor);
+    updateComponentStatus('scheduler', components.scheduler);
+    updateComponentStatus('processor', components.log_processor);
+    
+    // Update overall health score
+    const healthScore = health.health_score || 0;
+    $('#health-score').text(healthScore + '%');
+    $('#health-progress').css('width', healthScore + '%')
+        .removeClass('bg-success bg-warning bg-danger')
+        .addClass(healthScore >= 80 ? 'bg-success' : healthScore >= 60 ? 'bg-warning' : 'bg-danger');
+}
+
+function updateComponentStatus(component, status) {
+    const badge = $(`#${component}-status`);
+    badge.removeClass('bg-success bg-warning bg-danger')
+        .addClass(status === 'ok' ? 'bg-success' : status === 'degraded' ? 'bg-warning' : 'bg-danger')
+        .text(status === 'ok' ? 'OK' : status === 'degraded' ? 'DEGRADED' : 'ERROR');
+}
+
+function loadRecentActivity() {
+    // This would load recent log entries or system events
+    // For now, show placeholder
+    $('#recent-activity').html(`
+        <div class="activity-item">
+            <i class="fas fa-info-circle text-info"></i>
+            <span>System started successfully</span>
+            <small class="text-muted">Just now</small>
+        </div>
+    `);
+}
+
+function loadActiveSources() {
+    // This would load active log sources
+    // For now, show placeholder data
+    const sources = [
+        { name: 'ssdev', status: 'active', lastSeen: '2 minutes ago', logsToday: 1234, errorRate: 2.1 },
+        { name: 'ssdvr', status: 'active', lastSeen: '1 minute ago', logsToday: 856, errorRate: 0.8 },
+        { name: 'ssmcp', status: 'active', lastSeen: '30 seconds ago', logsToday: 432, errorRate: 1.2 },
+        { name: 'ssrun', status: 'inactive', lastSeen: '1 hour ago', logsToday: 123, errorRate: 0.0 }
+    ];
+    
+    const tbody = $('#sources-table');
+    tbody.empty();
+    
+    sources.forEach(source => {
+        const statusBadge = source.status === 'active' ? 
+            '<span class="badge bg-success">Active</span>' : 
+            '<span class="badge bg-secondary">Inactive</span>';
+        
+        const row = `
+            <tr>
+                <td><strong>${source.name}</strong></td>
+                <td>${statusBadge}</td>
+                <td>${source.lastSeen}</td>
+                <td>${formatNumber(source.logsToday)}</td>
+                <td>${formatPercentage(source.errorRate)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="viewSourceLogs('${source.name}')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.append(row);
+    });
+}
+
+function refreshActivity() {
+    loadRecentActivity();
+}
+
+function viewSourceLogs(source) {
+    window.location.href = `/logs?source=${source}`;
+}
+
+function formatNumber(num) {
+    return new Intl.NumberFormat().format(num);
+}
+
+function formatPercentage(num) {
+    return num.toFixed(1) + '%';
+}
+</script>
+{% endblock %}

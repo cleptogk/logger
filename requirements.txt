@@ -1,0 +1,44 @@
+# Centralized Logging Server Requirements
+
+# Core logging stack
+loguru>=0.7.0
+watchdog>=3.0.0
+pyparsing>=3.1.0
+apscheduler>=3.10.0
+prometheus-client>=0.17.0
+
+# Web framework and dashboard
+flask>=2.3.0
+flask-socketio>=5.3.0
+gunicorn>=21.0.0
+jinja2>=3.1.0
+markupsafe>=2.1.0
+werkzeug>=2.3.0
+itsdangerous>=2.1.0
+click>=8.1.0
+blinker>=1.6.0
+
+# Data processing and analytics
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# System monitoring
+psutil>=5.9.0
+py-cpuinfo>=9.0.0
+distro>=1.8.0
+netifaces>=0.11.0
+
+# Database and caching
+redis>=4.5.0
+sqlalchemy>=2.0.0
+
+# Additional utilities
+requests>=2.31.0
+urllib3>=2.0.0
+certifi>=2023.0.0
+charset-normalizer>=3.2.0
+idna>=3.4
+pyyaml>=6.0

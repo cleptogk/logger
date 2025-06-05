@@ -1,0 +1,60 @@
+# Centralized Logging Server Configuration
+# Copy this file to 'environment' and customize for your deployment
+
+# Application Settings
+DEBUG_ENABLED=false
+LOG_LEVEL=INFO
+STRUCTURED_LOGGING=false
+
+# Server Configuration
+BIND_ADDRESS=0.0.0.0
+LOGGING_SERVER_PORT=8080
+WEB_DASHBOARD_PORT=8081
+METRICS_PORT=9090
+
+# Security
+SECRET_KEY=your-secret-key-here
+
+# Redis Configuration
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=
+
+# Log Storage
+LOG_BASE_DIR=/var/log/centralized
+LOG_RETENTION_DAYS=90
+MAX_LOG_FILE_SIZE=100MB
+
+# Processing Configuration
+MAX_WORKERS=4
+BATCH_SIZE=1000
+PROCESSING_INTERVAL=5
+
+# Monitoring
+HEALTH_CHECK_INTERVAL=30
+METRICS_COLLECTION_INTERVAL=10
+
+# File Monitoring
+WATCH_DIRECTORIES=/var/log/centralized/ssdev,/var/log/centralized/ssdvr,/var/log/centralized/ssmcp,/var/log/centralized/ssrun
+WATCH_PATTERNS=*.log,*.json
+
+# Database (if needed for advanced features)
+DATABASE_URL=sqlite:///opt/logging/data/logging.db
+
+# External Services
+PROMETHEUS_GATEWAY_URL=
+SLACK_WEBHOOK_URL=
+EMAIL_SMTP_SERVER=
+EMAIL_FROM_ADDRESS=
+
+# Performance Tuning
+MEMORY_LIMIT=512MB
+CPU_LIMIT=2
+DISK_SPACE_THRESHOLD=85
+
+# Feature Flags
+ENABLE_REAL_TIME_STREAMING=true
+ENABLE_LOG_PARSING=true
+ENABLE_ALERTING=true
+ENABLE_ARCHIVAL=true
