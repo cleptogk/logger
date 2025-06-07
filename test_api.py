@@ -286,8 +286,25 @@ def extract_timestamp_from_log_line(line):
     return datetime.now(pacific_tz)
 
 def read_logs_with_filters(host, application=None, component=None, step=None,
-                          start_time=None, end_time=None, limit=1000):
-    """Read logs from host log files with advanced filtering."""
+                          start_time=None, end_time=None, limit=1000,
+                          search_query=None, pattern=None, level_filter=None,
+                          refresh_id=None, offset=0):
+    """Read logs from host log files with advanced filtering.
+
+    Args:
+        host: Target host name
+        application: Application filter
+        component: Component filter
+        step: Step filter
+        start_time: Start time filter
+        end_time: End time filter
+        limit: Maximum number of results
+        search_query: Full-text search query
+        pattern: Regex pattern for matching
+        level_filter: Comma-separated log levels (ERROR,WARN,INFO)
+        refresh_id: Specific refresh ID to filter by
+        offset: Pagination offset
+    """
     log_dir = Path(f'/var/log/centralized/{host}')
     logs = []
 
@@ -357,6 +374,30 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                     elif any(word in line_lower for word in ['debug', 'trace']):
                         level = 'DEBUG'
 
+                    # Advanced filtering
+                    # 1. Full-text search
+                    if search_query and search_query.lower() not in line.lower():
+                        continue
+
+                    # 2. Regex pattern matching
+                    if pattern:
+                        try:
+                            if not re.search(pattern, line, re.IGNORECASE):
+                                continue
+                        except re.error:
+                            # Invalid regex pattern, skip this filter
+                            pass
+
+                    # 3. Log level filtering
+                    if level_filter:
+                        allowed_levels = [l.strip().upper() for l in level_filter.split(',')]
+                        if level not in allowed_levels:
+                            continue
+
+                    # 4. Refresh ID filtering
+                    if refresh_id and f'[{refresh_id}]' not in line:
+                        continue
+
                     log_entry = {
                         'timestamp': log_timestamp.isoformat(),
                         'host': host,
@@ -378,6 +419,11 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
 
     # Sort by timestamp (newest first)
     logs.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    # Apply pagination
+    if offset > 0:
+        logs = logs[offset:]
+
     return logs[:limit]
 
 @app.route('/health')
@@ -391,14 +437,22 @@ def health_check():
 
 @app.route('/logger/host=<host>')
 def get_host_logs(host):
-    """Get logs for a specific host. Format: /logger/host=ssdev"""
+    """Get logs for a specific host with advanced filtering. Format: /logger/host=ssdev"""
     try:
+        # Basic filtering parameters
         application = request.args.get('application', 'all')
         component = request.args.get('component', 'all')
         step = request.args.get('step', 'all')
         log_type = request.args.get('log', 'recent')
         time_filter = request.args.get('time', None)
         limit = int(request.args.get('limit', 100))
+
+        # Advanced filtering parameters
+        search_query = request.args.get('search')      # Full-text search
+        pattern = request.args.get('pattern')          # Regex pattern matching
+        level_filter = request.args.get('level')       # Log level filtering (ERROR,WARN,INFO)
+        refresh_id = request.args.get('refresh_id')    # Specific refresh ID filtering
+        offset = int(request.args.get('offset', 0))    # Pagination offset
 
         # Parse time filter
         start_time, end_time = parse_time_filter(time_filter)
@@ -411,7 +465,12 @@ def get_host_logs(host):
             step=step,
             start_time=start_time,
             end_time=end_time,
-            limit=limit
+            limit=limit + offset,  # Get extra logs for pagination
+            search_query=search_query,
+            pattern=pattern,
+            level_filter=level_filter,
+            refresh_id=refresh_id,
+            offset=offset
         )
 
         # Additional filtering by log type
@@ -431,6 +490,17 @@ def get_host_logs(host):
             'time_range': {
                 'start': start_time.isoformat() if start_time else None,
                 'end': end_time.isoformat() if end_time else None
+            },
+            'advanced_filters': {
+                'search_query': search_query,
+                'pattern': pattern,
+                'level_filter': level_filter,
+                'refresh_id': refresh_id
+            },
+            'pagination': {
+                'limit': limit,
+                'offset': offset,
+                'returned_count': len(logs)
             },
             'count': len(logs),
             'logs': logs,
@@ -654,6 +724,104 @@ def get_iptv_orchestrator_logs(host):
     except Exception as e:
         return jsonify({'error': str(e), 'host': host}), 500
 
+@app.route('/logger/search/<host>')
+def advanced_search(host):
+    """Advanced search endpoint with full filtering capabilities.
+    Format: /logger/search/ssdev?search=database locked&pattern=Step [1-3]/8&level=ERROR&refresh_id=Refresh-14"""
+    try:
+        # All filtering parameters
+        application = request.args.get('application', 'all')
+        component = request.args.get('component', 'all')
+        step = request.args.get('step', 'all')
+        time_filter = request.args.get('time', 'last 1 hour')
+        limit = int(request.args.get('limit', 50))
+        offset = int(request.args.get('offset', 0))
+
+        # Advanced search parameters
+        search_query = request.args.get('search')
+        pattern = request.args.get('pattern')
+        level_filter = request.args.get('level')
+        refresh_id = request.args.get('refresh_id')
+
+        # Parse time filter
+        start_time, end_time = parse_time_filter(time_filter)
+
+        # Perform advanced search
+        logs = read_logs_with_filters(
+            host=host,
+            application=application,
+            component=component,
+            step=step,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit + offset,
+            search_query=search_query,
+            pattern=pattern,
+            level_filter=level_filter,
+            refresh_id=refresh_id,
+            offset=offset
+        )
+
+        # Search analytics
+        total_before_filters = len(logs) + offset if offset > 0 else len(logs)
+
+        # Group results by different criteria for analysis
+        level_counts = {}
+        component_counts = {}
+        refresh_counts = {}
+
+        for log in logs:
+            # Level distribution
+            level = log.get('level', 'UNKNOWN')
+            level_counts[level] = level_counts.get(level, 0) + 1
+
+            # Component distribution
+            comp = log.get('component', 'unknown')
+            component_counts[comp] = component_counts.get(comp, 0) + 1
+
+            # Refresh ID distribution
+            message = log.get('message', '')
+            refresh_match = re.search(r'\[Refresh-(\d+)\]', message)
+            if refresh_match:
+                refresh_id_found = f"Refresh-{refresh_match.group(1)}"
+                refresh_counts[refresh_id_found] = refresh_counts.get(refresh_id_found, 0) + 1
+
+        response = {
+            'host': host,
+            'search_parameters': {
+                'application': application,
+                'component': component,
+                'step': step,
+                'time_filter': time_filter,
+                'search_query': search_query,
+                'pattern': pattern,
+                'level_filter': level_filter,
+                'refresh_id': refresh_id
+            },
+            'pagination': {
+                'limit': limit,
+                'offset': offset,
+                'returned_count': len(logs),
+                'estimated_total': total_before_filters
+            },
+            'analytics': {
+                'level_distribution': level_counts,
+                'component_distribution': component_counts,
+                'refresh_distribution': refresh_counts
+            },
+            'time_range': {
+                'start': start_time.isoformat() if start_time else None,
+                'end': end_time.isoformat() if end_time else None
+            },
+            'results': logs,
+            'query_time': datetime.now().isoformat()
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'host': host}), 500
+
 @app.route('/logger/files')
 def list_log_files():
     """List all available log files."""
@@ -678,8 +846,10 @@ if __name__ == '__main__':
     print("📋 Available endpoints:")
     print("  - /health")
     print("  - /logger/host=<host>?application=<app>&component=<comp>&log=<type>")
+    print("  - /logger/search/<host>?search=<query>&pattern=<regex>&level=<levels>")
     print("  - /logger/troubleshoot/<host>/<application>")
     print("  - /logger/components/<host>/<application>")
+    print("  - /logger/iptv-orchestrator/<host>?step=<step>&time=<time>")
     print("  - /logger/files")
     print("=" * 50)
     
