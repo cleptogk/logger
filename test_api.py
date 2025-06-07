@@ -28,16 +28,16 @@ log_files_cache = {}
 COMPONENT_PATTERNS = {
     'sports-scheduler': {
         'iptv-orchestrator': {
-            'patterns': [r'iptv.?refresh', r'orchestrator', r'workflow'],
+            'patterns': [r'iptv.?refresh', r'orchestrator', r'workflow', r'sports_scheduler\.iptv_orchestrator'],
             'steps': {
-                'step-1': [r'step\s*1', r'purge.*xtream', r'purging.*xtream'],
-                'step-2': [r'step\s*2', r'refresh.*xtream.*channels', r'refreshing.*channels'],
-                'step-3': [r'step\s*3', r'refresh.*xtream.*epg', r'refreshing.*epg'],
-                'step-4': [r'step\s*4', r'purge.*epg.*database', r'purging.*epg'],
-                'step-5': [r'step\s*5', r'refresh.*epg.*database', r'refreshing.*epg.*database'],
-                'step-6': [r'step\s*6', r'generate.*sports.*playlist', r'generating.*playlist'],
-                'step-7': [r'step\s*7', r'refresh.*channels.*dvr', r'refreshing.*channels'],
-                'step-8': [r'step\s*8', r'process.*automated.*recordings', r'automated.*recordings']
+                'step-1': [r'step\s*1/8', r'step\s*1\s*:', r'purge.*xtream', r'purging.*xtream'],
+                'step-2': [r'step\s*2/8', r'step\s*2\s*:', r'refresh.*xtream.*channels', r'refreshing.*xtream.*channels'],
+                'step-3': [r'step\s*3/8', r'step\s*3\s*:', r'refresh.*xtream.*epg', r'refreshing.*xtream.*epg'],
+                'step-4': [r'step\s*4/8', r'step\s*4\s*:', r'purge.*epg.*database', r'purging.*epg.*database'],
+                'step-5': [r'step\s*5/8', r'step\s*5\s*:', r'refresh.*epg.*database', r'refreshing.*epg.*database'],
+                'step-6': [r'step\s*6/8', r'step\s*6\s*:', r'generate.*sports.*playlist', r'generating.*sports.*playlist'],
+                'step-7': [r'step\s*7/8', r'step\s*7\s*:', r'refresh.*channels.*dvr', r'refreshing.*channels.*dvr'],
+                'step-8': [r'step\s*8/8', r'step\s*8\s*:', r'process.*automated.*recordings', r'automated.*recordings']
             }
         },
         'epg-processor': {
