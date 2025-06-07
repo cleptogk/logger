@@ -320,13 +320,14 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                     # Determine application from message content
                     detected_app = 'unknown'
                     if app_filter:
-                        if app_filter in line.lower():
+                        # Check if application filter matches anywhere in the line
+                        if app_filter.lower() in line.lower() or app_filter.replace('-', '_') in line:
                             detected_app = app_filter
                         else:
                             continue  # Skip if application filter doesn't match
                     else:
                         # Try to detect application from enhanced logging patterns
-                        if 'sports_scheduler.' in line or 'sports-scheduler' in line.lower() or 'iptv' in line.lower() or 'orchestrator' in line.lower():
+                        if 'sports_scheduler.' in line or 'sports-scheduler' in line.lower() or 'iptv' in line.lower() or 'orchestrator' in line.lower() or 'Step' in line:
                             detected_app = 'sports-scheduler'
                         elif 'auto_scraper.' in line or 'auto-scraper' in line.lower() or 'scraper' in line.lower() or 'list creator' in line.lower():
                             detected_app = 'auto-scraper'
