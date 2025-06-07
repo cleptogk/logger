@@ -231,12 +231,169 @@ def get_stats():
             'active_sources': log_processor.get_active_sources(),
             'total_logs_today': log_processor.get_logs_count_today()
         }
-        
+
         return jsonify(stats)
-        
+
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
         return jsonify({'error': str(e)}), 500
+
+# MVP API Endpoints for Troubleshooting
+@app.route('/logger/host=<host>')
+def get_host_logs(host):
+    """Get logs for a specific host. Format: /logger/host=ssdev"""
+    try:
+        application = request.args.get('application', 'all')
+        component = request.args.get('component', 'all')
+        log_type = request.args.get('log', 'recent')  # recent, lastrun, errors
+        limit = int(request.args.get('limit', 50))
+
+        # Get logs based on parameters
+        if log_type == 'lastrun':
+            # Get recent logs that might indicate last run status
+            logs = log_processor.get_logs(host=host, application=application, component=component, limit=limit)
+            # Filter for run-related messages
+            logs = [log for log in logs if any(keyword in log.get('message', '').lower()
+                   for keyword in ['started', 'completed', 'finished', 'run', 'execution'])]
+        elif log_type == 'errors':
+            # Get error logs
+            logs = log_processor.get_logs(host=host, application=application, component=component, level='ERROR', limit=limit)
+        else:
+            # Get recent logs
+            logs = log_processor.get_logs(host=host, application=application, component=component, limit=limit)
+
+        response = {
+            'host': host,
+            'application': application,
+            'component': component,
+            'log_type': log_type,
+            'count': len(logs),
+            'logs': logs,
+            'query_time': logger._core.now().isoformat()
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Failed to get host logs for {host}: {e}")
+        return jsonify({'error': str(e), 'host': host}), 500
+
+@app.route('/logger/troubleshoot/<host>/<application>')
+def troubleshoot_application(host, application):
+    """Troubleshoot specific application. Format: /logger/troubleshoot/ssdev/auto-scraper"""
+    try:
+        component = request.args.get('component', 'all')
+        hours = int(request.args.get('hours', 1))  # Look back hours
+
+        # Get recent logs
+        recent_logs = log_processor.get_logs(host=host, application=application, component=component, limit=100)
+
+        # Get error logs
+        error_logs = log_processor.get_logs(host=host, application=application, component=component, level='ERROR', limit=20)
+
+        # Analyze for common issues
+        analysis = {
+            'total_logs': len(recent_logs),
+            'error_count': len(error_logs),
+            'last_activity': recent_logs[0]['timestamp'] if recent_logs else 'No recent activity',
+            'common_errors': _analyze_common_errors(error_logs),
+            'status': 'healthy' if len(error_logs) == 0 else 'issues_detected'
+        }
+
+        response = {
+            'host': host,
+            'application': application,
+            'component': component,
+            'analysis': analysis,
+            'recent_logs': recent_logs[:10],  # Last 10 logs
+            'error_logs': error_logs[:5],     # Last 5 errors
+            'query_time': logger._core.now().isoformat()
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Failed to troubleshoot {host}/{application}: {e}")
+        return jsonify({'error': str(e), 'host': host, 'application': application}), 500
+
+@app.route('/logger/components/<host>/<application>')
+def list_components(host, application):
+    """List all components for an application. Format: /logger/components/ssdev/auto-scraper"""
+    try:
+        # Get recent logs to identify active components
+        logs = log_processor.get_logs(host=host, application=application, limit=200)
+
+        # Extract unique components
+        components = set()
+        component_stats = {}
+
+        for log in logs:
+            comp = log.get('component', 'general')
+            components.add(comp)
+
+            if comp not in component_stats:
+                component_stats[comp] = {
+                    'log_count': 0,
+                    'error_count': 0,
+                    'last_activity': None
+                }
+
+            component_stats[comp]['log_count'] += 1
+            if log.get('level') == 'ERROR':
+                component_stats[comp]['error_count'] += 1
+
+            if not component_stats[comp]['last_activity']:
+                component_stats[comp]['last_activity'] = log.get('timestamp')
+
+        response = {
+            'host': host,
+            'application': application,
+            'components': list(components),
+            'component_stats': component_stats,
+            'total_components': len(components),
+            'query_time': logger._core.now().isoformat()
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Failed to list components for {host}/{application}: {e}")
+        return jsonify({'error': str(e), 'host': host, 'application': application}), 500
+
+def _analyze_common_errors(error_logs):
+    """Analyze common error patterns in logs."""
+    try:
+        if not error_logs:
+            return []
+
+        error_patterns = {}
+        for log in error_logs:
+            message = log.get('message', '').lower()
+
+            # Categorize common errors
+            if 'connection' in message or 'timeout' in message:
+                error_type = 'connection_issues'
+            elif 'permission' in message or 'access' in message:
+                error_type = 'permission_issues'
+            elif 'file not found' in message or 'no such file' in message:
+                error_type = 'file_issues'
+            elif 'database' in message or 'sql' in message:
+                error_type = 'database_issues'
+            elif 'api' in message or 'http' in message:
+                error_type = 'api_issues'
+            else:
+                error_type = 'other_errors'
+
+            if error_type not in error_patterns:
+                error_patterns[error_type] = 0
+            error_patterns[error_type] += 1
+
+        # Return sorted list of error types
+        return sorted(error_patterns.items(), key=lambda x: x[1], reverse=True)
+
+    except Exception as e:
+        logger.error(f"Failed to analyze common errors: {e}")
+        return []
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
