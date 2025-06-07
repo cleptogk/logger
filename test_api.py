@@ -9,6 +9,7 @@ import sys
 import json
 import time
 import re
+import pytz
 from pathlib import Path
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
@@ -114,14 +115,20 @@ COMPONENT_PATTERNS = {
 }
 
 def parse_time_filter(time_str):
-    """Parse time filter string into datetime objects."""
+    """Parse time filter string into datetime objects with Pacific timezone support."""
     if not time_str:
         return None, None
 
     try:
+        # Use Pacific timezone (PDT/PST)
+        pacific_tz = pytz.timezone('America/Los_Angeles')
+
         # Handle different time formats
         if 'yesterday' in time_str.lower():
-            yesterday = datetime.now() - timedelta(days=1)
+            # Get yesterday in Pacific timezone
+            now_pacific = datetime.now(pacific_tz)
+            yesterday_pacific = now_pacific - timedelta(days=1)
+
             if 'around' in time_str.lower() and ('am' in time_str.lower() or 'pm' in time_str.lower()):
                 # Extract time like "yesterday around 7am"
                 time_match = re.search(r'(\d{1,2})\s*(am|pm)', time_str.lower())
@@ -132,17 +139,19 @@ def parse_time_filter(time_str):
                     elif time_match.group(2) == 'am' and hour == 12:
                         hour = 0
 
-                    start_time = yesterday.replace(hour=hour, minute=0, second=0, microsecond=0)
+                    start_time = yesterday_pacific.replace(hour=hour, minute=0, second=0, microsecond=0)
                     end_time = start_time + timedelta(hours=2)  # 2-hour window
                     return start_time, end_time
             else:
                 # Whole day yesterday
-                start_time = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-                end_time = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+                start_time = yesterday_pacific.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_time = yesterday_pacific.replace(hour=23, minute=59, second=59, microsecond=999999)
                 return start_time, end_time
 
         elif 'today' in time_str.lower():
-            today = datetime.now()
+            # Get today in Pacific timezone
+            now_pacific = datetime.now(pacific_tz)
+
             if 'around' in time_str.lower() and ('am' in time_str.lower() or 'pm' in time_str.lower()):
                 # Extract time like "today around 2pm"
                 time_match = re.search(r'(\d{1,2})\s*(am|pm)', time_str.lower())
@@ -153,17 +162,17 @@ def parse_time_filter(time_str):
                     elif time_match.group(2) == 'am' and hour == 12:
                         hour = 0
 
-                    start_time = today.replace(hour=hour, minute=0, second=0, microsecond=0)
+                    start_time = now_pacific.replace(hour=hour, minute=0, second=0, microsecond=0)
                     end_time = start_time + timedelta(hours=2)  # 2-hour window
                     return start_time, end_time
             else:
                 # Whole day today
-                start_time = today.replace(hour=0, minute=0, second=0, microsecond=0)
-                end_time = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+                start_time = now_pacific.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_time = now_pacific.replace(hour=23, minute=59, second=59, microsecond=999999)
                 return start_time, end_time
 
         elif 'last' in time_str.lower() and 'hour' in time_str.lower():
-            end_time = datetime.now()
+            end_time = datetime.now(pacific_tz)
             start_time = end_time - timedelta(hours=1)
             return start_time, end_time
 
@@ -172,7 +181,7 @@ def parse_time_filter(time_str):
             minutes_match = re.search(r'(\d+)\s*minutes', time_str.lower())
             if minutes_match:
                 minutes = int(minutes_match.group(1))
-                end_time = datetime.now()
+                end_time = datetime.now(pacific_tz)
                 start_time = end_time - timedelta(minutes=minutes)
                 return start_time, end_time
 
@@ -234,7 +243,9 @@ def scan_log_files():
     return files_found
 
 def extract_timestamp_from_log_line(line):
-    """Extract timestamp from log line."""
+    """Extract timestamp from log line with timezone awareness."""
+    pacific_tz = pytz.timezone('America/Los_Angeles')
+
     # Try different timestamp formats
     timestamp_patterns = [
         r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2})',  # ISO format with timezone
@@ -247,21 +258,32 @@ def extract_timestamp_from_log_line(line):
         if match:
             timestamp_str = match.group(1)
             try:
-                if 'T' in timestamp_str:
-                    # ISO format
-                    return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                if 'T' in timestamp_str and ('+' in timestamp_str or '-' in timestamp_str[-6:]):
+                    # ISO format with timezone (like 2025-06-06T07:18:31.234567-07:00)
+                    parsed_time = datetime.fromisoformat(timestamp_str)
+                    # Convert to Pacific timezone if not already
+                    if parsed_time.tzinfo is None:
+                        parsed_time = pacific_tz.localize(parsed_time)
+                    return parsed_time
+                elif 'T' in timestamp_str:
+                    # ISO format without timezone
+                    parsed_time = datetime.fromisoformat(timestamp_str.replace('Z', ''))
+                    return pacific_tz.localize(parsed_time)
                 elif '-' in timestamp_str:
-                    # Standard format
-                    return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                    # Standard format - assume Pacific timezone
+                    parsed_time = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                    return pacific_tz.localize(parsed_time)
                 else:
-                    # Syslog format - assume current year
+                    # Syslog format - assume current year and Pacific timezone
                     current_year = datetime.now().year
-                    return datetime.strptime(f"{current_year} {timestamp_str}", '%Y %b %d %H:%M:%S')
-            except Exception:
+                    parsed_time = datetime.strptime(f"{current_year} {timestamp_str}", '%Y %b %d %H:%M:%S')
+                    return pacific_tz.localize(parsed_time)
+            except Exception as e:
+                print(f"Error parsing timestamp '{timestamp_str}': {e}")
                 continue
 
-    # Fallback to current time
-    return datetime.now()
+    # Fallback to current time in Pacific timezone
+    return datetime.now(pacific_tz)
 
 def read_logs_with_filters(host, application=None, component=None, step=None,
                           start_time=None, end_time=None, limit=1000):
