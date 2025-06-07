@@ -325,10 +325,10 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                         else:
                             continue  # Skip if application filter doesn't match
                     else:
-                        # Try to detect application
-                        if 'sports-scheduler' in line.lower() or 'iptv' in line.lower() or 'orchestrator' in line.lower():
+                        # Try to detect application from enhanced logging patterns
+                        if 'sports_scheduler.' in line or 'sports-scheduler' in line.lower() or 'iptv' in line.lower() or 'orchestrator' in line.lower():
                             detected_app = 'sports-scheduler'
-                        elif 'auto-scraper' in line.lower() or 'scraper' in line.lower() or 'list creator' in line.lower():
+                        elif 'auto_scraper.' in line or 'auto-scraper' in line.lower() or 'scraper' in line.lower() or 'list creator' in line.lower():
                             detected_app = 'auto-scraper'
                         elif 'nginx' in line.lower():
                             detected_app = 'nginx'
