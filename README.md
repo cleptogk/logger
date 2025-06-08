@@ -1,15 +1,15 @@
-# Centralized Logging Server
+# Enhanced Logging API Server
 
-A comprehensive centralized logging solution built with Python, featuring real-time log ingestion, processing, and visualization.
+A production-ready centralized logging solution with advanced search, analytics, and real-time monitoring capabilities for multi-application environments.
 
 ## Features
 
-- **Real-time Log Ingestion**: Receives logs from multiple sources via rsyslog
-- **Advanced Processing**: Uses Loguru, Watchdog, and PyParsing for intelligent log handling
-- **Interactive Dashboard**: Web-based interface with Chart.js visualizations
-- **Automated Management**: APScheduler for maintenance, rotation, and cleanup
-- **Metrics & Monitoring**: Prometheus integration for system health monitoring
-- **Multi-VM Support**: Centralized logging for ssdev, ssdvr, ssmcp, ssrun
+- **Enhanced Logging Integration**: Full support for sports-scheduler and auto-scraper structured logging
+- **Advanced Search & Analytics**: Full-text search, regex patterns, metadata extraction, and distribution analysis
+- **Real-time Processing**: Timezone-aware log parsing with step-by-step workflow tracking
+- **Production-Ready API**: RESTful endpoints with pagination, filtering, and advanced query capabilities
+- **Multi-Application Support**: Automatic application and component detection across ssdev, ssdvr, ssmcp, ssrun
+- **Workflow Correlation**: Refresh ID tracking and step completion analysis for complex workflows
 
 ## Technology Stack
 
@@ -157,34 +157,52 @@ systemctl status logging-server logging-dashboard
 journalctl -u logging-server -f
 ```
 
-## API Endpoints
+## Enhanced API Endpoints
 
-### Log Management
-- `GET /api/logs` - Retrieve logs with filtering
-- `GET /api/logs/search` - Search logs by pattern
-- `GET /api/logs/stats` - Log statistics and metrics
+### Core Endpoints
+- `GET /health` - Service health check and status
+- `GET /logger/files` - List all available log files and hosts
 
-### System Health
-- `GET /health` - Service health check
-- `GET /metrics` - Prometheus metrics
-- `GET /api/status` - Detailed system status
+### Host-Based Queries
+- `GET /logger/host=<host>` - Get logs for specific host with advanced filtering
+- `GET /logger/search/<host>` - Advanced search with full-text, regex, and metadata filtering
+- `GET /logger/troubleshoot/<host>/<application>` - Application-specific troubleshooting
 
-### Real-time Streaming
-- `WebSocket /ws/logs` - Real-time log streaming
-- `WebSocket /ws/metrics` - Real-time metrics updates
+### Application-Specific
+- `GET /logger/iptv-orchestrator/<host>` - IPTV workflow step analysis
+- `GET /logger/components/<host>/<application>` - Component discovery and statistics
+
+### Advanced Filtering Parameters
+- `?search=<query>` - Full-text search across log content
+- `?pattern=<regex>` - Regex pattern matching
+- `?level=ERROR,WARN,INFO` - Log level filtering
+- `?refresh_id=Refresh-14` - Workflow correlation by refresh ID
+- `?time=yesterday around 7am` - Natural language time filtering
+- `?step=6` - Filter by specific workflow step
+- `?limit=100&offset=200` - Pagination support
 
 ## Development
 
-### Running in Development Mode
+### Running the Enhanced Logging API
 ```bash
+# Production mode
+python log_api.py
+
+# Development mode with debug
 export FLASK_ENV=development
-export DEBUG_ENABLED=true
-python server/log-server.py
+python log_api.py
 ```
 
-### Testing
+### Testing API Endpoints
 ```bash
-python scripts/test-logging.py
+# Health check
+curl http://localhost:8080/health
+
+# Search logs with enhanced filtering
+curl "http://localhost:8080/logger/search/ssdev?search=Refresh&time=today&limit=5"
+
+# Get IPTV orchestrator workflow logs
+curl "http://localhost:8080/logger/iptv-orchestrator/ssdev?step=6&time=yesterday around 7am"
 ```
 
 ### Contributing
