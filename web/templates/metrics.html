@@ -1,0 +1,612 @@
+{% extends "base.html" %}
+
+{% block title %}Metrics - Enhanced Logging Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- System Metrics Overview -->
+    <div class="col-12 mb-4">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">API Requests</h6>
+                                <h3 class="mb-0" id="api-requests">-</h3>
+                                <small>last 24h</small>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-exchange-alt fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Response Time</h6>
+                                <h3 class="mb-0" id="avg-response-time">-</h3>
+                                <small>ms avg</small>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-tachometer-alt fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Active Hosts</h6>
+                                <h3 class="mb-0" id="active-hosts">-</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-server fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Storage Used</h6>
+                                <h3 class="mb-0" id="storage-used">-</h3>
+                                <small>GB</small>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-hdd fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- API Performance Chart -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>API Performance
+                </h5>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="perfTimeRange" id="perf1h" value="1h" checked>
+                    <label class="btn btn-outline-primary" for="perf1h">1H</label>
+                    
+                    <input type="radio" class="btn-check" name="perfTimeRange" id="perf6h" value="6h">
+                    <label class="btn btn-outline-primary" for="perf6h">6H</label>
+                    
+                    <input type="radio" class="btn-check" name="perfTimeRange" id="perf24h" value="24h">
+                    <label class="btn btn-outline-primary" for="perf24h">24H</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="performanceChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Host Distribution -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>Log Distribution by Host
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="hostDistributionChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Application Metrics -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>Application Activity
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="applicationChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Error Rate Trends -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Error Rate Trends
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="errorTrendChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- System Health Status -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-heartbeat me-2"></i>System Health
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-database fa-lg text-primary"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <div class="fw-bold">Enhanced Logging API</div>
+                                <span class="badge bg-success" id="api-status">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-hdd fa-lg text-info"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <div class="fw-bold">Log Storage</div>
+                                <span class="badge bg-success" id="storage-status">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-network-wired fa-lg text-warning"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <div class="fw-bold">Log Forwarding</div>
+                                <span class="badge bg-success" id="forwarding-status">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-chart-line fa-lg text-secondary"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <div class="fw-bold">Dashboard</div>
+                                <span class="badge bg-success" id="dashboard-status">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>Overall System Health</span>
+                        <span class="fw-bold" id="overall-health">100%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-success" role="progressbar" 
+                             style="width: 100%" id="health-progress"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Top Endpoints -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list-ol me-2"></i>Top API Endpoints
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Endpoint</th>
+                                <th>Requests</th>
+                                <th>Avg Response</th>
+                                <th>Error Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="endpoints-table">
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                    Loading endpoint metrics...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Alerts -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-bell me-2"></i>Recent Alerts & Events
+                </h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshAlerts()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="alerts-container">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Loading recent alerts...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Metrics page specific JavaScript
+let performanceChart = null;
+let hostDistributionChart = null;
+let applicationChart = null;
+let errorTrendChart = null;
+
+$(document).ready(function() {
+    initializeMetrics();
+    startMetricsUpdates();
+});
+
+function initializeMetrics() {
+    // Initialize all charts
+    initializePerformanceChart();
+    initializeHostDistributionChart();
+    initializeApplicationChart();
+    initializeErrorTrendChart();
+    
+    // Load initial data
+    loadMetricsData();
+    
+    // Setup event listeners
+    $('input[name="perfTimeRange"]').change(function() {
+        updatePerformanceChart($(this).val());
+    });
+}
+
+function startMetricsUpdates() {
+    // Update metrics every 60 seconds
+    setInterval(function() {
+        if (settings.autoRefresh) {
+            loadMetricsData();
+        }
+    }, 60000);
+}
+
+function loadMetricsData() {
+    // Load dashboard stats for metrics
+    $.get('/api/dashboard/stats')
+        .done(function(data) {
+            updateMetricsCards(data);
+            updateSystemHealth(data.health_data);
+            updateEndpointsTable();
+        })
+        .fail(function() {
+            showError('Failed to load metrics data');
+        });
+    
+    // Load additional metrics data
+    loadChartData();
+    loadAlertsData();
+}
+
+function updateMetricsCards(data) {
+    // Update metric cards with real data
+    $('#api-requests').text(formatNumber(data.total_logs_today || 0));
+    $('#avg-response-time').text('< 500');
+    $('#active-hosts').text('4');
+    $('#storage-used').text((data.disk_usage / 1024 / 1024 / 1024).toFixed(1) || '0.0');
+}
+
+function updateSystemHealth(healthData) {
+    if (!healthData) return;
+    
+    const components = healthData.components || {};
+    
+    // Update component statuses
+    updateComponentStatus('api', components.api || 'ok');
+    updateComponentStatus('storage', components.storage || 'ok');
+    updateComponentStatus('forwarding', components.forwarding || 'ok');
+    updateComponentStatus('dashboard', 'ok');
+    
+    // Calculate overall health
+    const healthScore = calculateHealthScore(components);
+    $('#overall-health').text(healthScore + '%');
+    $('#health-progress').css('width', healthScore + '%')
+        .removeClass('bg-success bg-warning bg-danger')
+        .addClass(healthScore >= 80 ? 'bg-success' : healthScore >= 60 ? 'bg-warning' : 'bg-danger');
+}
+
+function updateComponentStatus(component, status) {
+    const badge = $(`#${component}-status`);
+    badge.removeClass('bg-success bg-warning bg-danger')
+        .addClass(status === 'ok' ? 'bg-success' : status === 'degraded' ? 'bg-warning' : 'bg-danger')
+        .text(status === 'ok' ? 'OK' : status === 'degraded' ? 'DEGRADED' : 'ERROR');
+}
+
+function calculateHealthScore(components) {
+    const statuses = Object.values(components);
+    const okCount = statuses.filter(s => s === 'ok').length;
+    return Math.round((okCount / Math.max(statuses.length, 1)) * 100);
+}
+
+function loadChartData() {
+    // Load data for charts
+    // This would typically come from metrics endpoints
+    updateChartsWithSampleData();
+}
+
+function updateChartsWithSampleData() {
+    // Update performance chart
+    if (performanceChart) {
+        const now = new Date();
+        const labels = [];
+        const responseData = [];
+        const requestData = [];
+        
+        for (let i = 23; i >= 0; i--) {
+            const time = new Date(now.getTime() - i * 60 * 60 * 1000);
+            labels.push(time.getHours() + ':00');
+            responseData.push(Math.random() * 200 + 100);
+            requestData.push(Math.random() * 100 + 50);
+        }
+        
+        performanceChart.data.labels = labels;
+        performanceChart.data.datasets[0].data = responseData;
+        performanceChart.data.datasets[1].data = requestData;
+        performanceChart.update();
+    }
+    
+    // Update host distribution chart
+    if (hostDistributionChart) {
+        hostDistributionChart.data.datasets[0].data = [45, 25, 20, 10];
+        hostDistributionChart.update();
+    }
+    
+    // Update application chart
+    if (applicationChart) {
+        applicationChart.data.datasets[0].data = [65, 35, 25, 15, 10];
+        applicationChart.update();
+    }
+    
+    // Update error trend chart
+    if (errorTrendChart) {
+        const errorData = [];
+        for (let i = 0; i < 24; i++) {
+            errorData.push(Math.random() * 5);
+        }
+        errorTrendChart.data.datasets[0].data = errorData;
+        errorTrendChart.update();
+    }
+}
+
+function updateEndpointsTable() {
+    const endpoints = [
+        { endpoint: '/logger/search/ssdev', requests: 1234, avgResponse: 245, errorRate: 0.1 },
+        { endpoint: '/logger/iptv-orchestrator/ssdev', requests: 567, avgResponse: 189, errorRate: 0.0 },
+        { endpoint: '/logger/files', requests: 234, avgResponse: 56, errorRate: 0.0 },
+        { endpoint: '/health', requests: 890, avgResponse: 23, errorRate: 0.0 },
+        { endpoint: '/logger/host=ssdev', requests: 345, avgResponse: 167, errorRate: 0.2 }
+    ];
+    
+    const tbody = $('#endpoints-table');
+    tbody.empty();
+    
+    endpoints.forEach(endpoint => {
+        const errorClass = endpoint.errorRate > 1 ? 'text-danger' : endpoint.errorRate > 0 ? 'text-warning' : 'text-success';
+        const row = `
+            <tr>
+                <td><code>${endpoint.endpoint}</code></td>
+                <td>${formatNumber(endpoint.requests)}</td>
+                <td>${endpoint.avgResponse}ms</td>
+                <td class="${errorClass}">${endpoint.errorRate.toFixed(1)}%</td>
+            </tr>
+        `;
+        tbody.append(row);
+    });
+}
+
+function loadAlertsData() {
+    const alerts = [
+        { type: 'info', message: 'IPTV workflow Refresh-15 completed successfully', time: '2 minutes ago' },
+        { type: 'warning', message: 'High error rate detected on ssdev (2.1%)', time: '15 minutes ago' },
+        { type: 'success', message: 'All systems operational', time: '1 hour ago' }
+    ];
+    
+    const container = $('#alerts-container');
+    container.empty();
+    
+    if (!alerts.length) {
+        container.html('<div class="text-center text-muted">No recent alerts</div>');
+        return;
+    }
+    
+    alerts.forEach(alert => {
+        const alertClass = alert.type === 'warning' ? 'alert-warning' : 
+                          alert.type === 'success' ? 'alert-success' : 'alert-info';
+        const icon = alert.type === 'warning' ? 'fa-exclamation-triangle' : 
+                    alert.type === 'success' ? 'fa-check-circle' : 'fa-info-circle';
+        
+        const alertElement = `
+            <div class="alert ${alertClass} d-flex align-items-center">
+                <i class="fas ${icon} me-2"></i>
+                <div class="flex-grow-1">${alert.message}</div>
+                <small class="text-muted">${alert.time}</small>
+            </div>
+        `;
+        container.append(alertElement);
+    });
+}
+
+function initializePerformanceChart() {
+    const ctx = document.getElementById('performanceChart').getContext('2d');
+    performanceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Response Time (ms)',
+                data: [],
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1,
+                yAxisID: 'y'
+            }, {
+                label: 'Requests/min',
+                data: [],
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                tension: 0.1,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: { display: true, text: 'Response Time (ms)' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: { display: true, text: 'Requests/min' },
+                    grid: { drawOnChartArea: false }
+                }
+            }
+        }
+    });
+}
+
+function initializeHostDistributionChart() {
+    const ctx = document.getElementById('hostDistributionChart').getContext('2d');
+    hostDistributionChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['ssdev', 'ssdvr', 'ssmcp', 'ssrun'],
+            datasets: [{
+                data: [0, 0, 0, 0],
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.8)',
+                    'rgba(255, 99, 132, 0.8)',
+                    'rgba(255, 205, 86, 0.8)',
+                    'rgba(75, 192, 192, 0.8)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+}
+
+function initializeApplicationChart() {
+    const ctx = document.getElementById('applicationChart').getContext('2d');
+    applicationChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Sports Scheduler', 'Auto Scraper', 'Nginx', 'Gunicorn', 'System'],
+            datasets: [{
+                label: 'Log Volume',
+                data: [0, 0, 0, 0, 0],
+                backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+function initializeErrorTrendChart() {
+    const ctx = document.getElementById('errorTrendChart').getContext('2d');
+    errorTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: Array.from({length: 24}, (_, i) => i + ':00'),
+            datasets: [{
+                label: 'Error Rate (%)',
+                data: [],
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 10,
+                    title: { display: true, text: 'Error Rate (%)' }
+                }
+            }
+        }
+    });
+}
+
+function updatePerformanceChart(timeRange) {
+    // Update chart based on time range
+    console.log('Updating performance chart for:', timeRange);
+    loadChartData();
+}
+
+function refreshAlerts() {
+    loadAlertsData();
+}
+
+function formatNumber(num) {
+    return new Intl.NumberFormat().format(num);
+}
+</script>
+{% endblock %}

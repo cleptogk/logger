@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+
+{% block title %}Log Viewer - Enhanced Logging Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Search and Filters -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-search me-2"></i>Advanced Log Search
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="searchForm" class="row g-3">
+                    <div class="col-md-4">
+                        <label for="searchQuery" class="form-label">Search Query</label>
+                        <input type="text" class="form-control" id="searchQuery" placeholder="Enter search terms...">
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label for="hostSelect" class="form-label">Host</label>
+                        <select class="form-select" id="hostSelect">
+                            <option value="ssdev">ssdev</option>
+                            <option value="ssdvr">ssdvr</option>
+                            <option value="ssmcp">ssmcp</option>
+                            <option value="ssrun">ssrun</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label for="applicationSelect" class="form-label">Application</label>
+                        <select class="form-select" id="applicationSelect">
+                            <option value="">All Applications</option>
+                            <option value="sports-scheduler">Sports Scheduler</option>
+                            <option value="auto-scraper">Auto Scraper</option>
+                            <option value="nginx">Nginx</option>
+                            <option value="gunicorn">Gunicorn</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label for="componentSelect" class="form-label">Component</label>
+                        <select class="form-select" id="componentSelect">
+                            <option value="">All Components</option>
+                            <option value="iptv-orchestrator">IPTV Orchestrator</option>
+                            <option value="automated-recordings">Automated Recordings</option>
+                            <option value="channels-dvr">Channels DVR</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label for="levelSelect" class="form-label">Log Level</label>
+                        <select class="form-select" id="levelSelect">
+                            <option value="">All Levels</option>
+                            <option value="ERROR">ERROR</option>
+                            <option value="WARN">WARN</option>
+                            <option value="INFO">INFO</option>
+                            <option value="DEBUG">DEBUG</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <label for="timeRange" class="form-label">Time Range</label>
+                        <select class="form-select" id="timeRange">
+                            <option value="last 1 hour">Last 1 Hour</option>
+                            <option value="last 6 hours">Last 6 Hours</option>
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="last 7 days">Last 7 Days</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <label for="refreshId" class="form-label">Refresh ID</label>
+                        <input type="text" class="form-control" id="refreshId" placeholder="e.g., Refresh-15">
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <label for="regexPattern" class="form-label">Regex Pattern</label>
+                        <input type="text" class="form-control" id="regexPattern" placeholder="e.g., Step [1-3]/8">
+                    </div>
+                    
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary me-2" onclick="clearFilters()">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                        <button type="button" class="btn btn-outline-info" onclick="exportLogs()">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Search Results Summary -->
+    <div class="col-12 mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <div id="searchSummary" class="text-muted">
+                Ready to search logs...
+            </div>
+            <div class="btn-group btn-group-sm" role="group">
+                <input type="radio" class="btn-check" name="viewMode" id="viewTable" value="table" checked>
+                <label class="btn btn-outline-primary" for="viewTable">
+                    <i class="fas fa-table"></i> Table
+                </label>
+                
+                <input type="radio" class="btn-check" name="viewMode" id="viewRaw" value="raw">
+                <label class="btn btn-outline-primary" for="viewRaw">
+                    <i class="fas fa-code"></i> Raw
+                </label>
+                
+                <input type="radio" class="btn-check" name="viewMode" id="viewTimeline" value="timeline">
+                <label class="btn btn-outline-primary" for="viewTimeline">
+                    <i class="fas fa-timeline"></i> Timeline
+                </label>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Log Results -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list-alt me-2"></i>Log Results
+                </h5>
+                <div class="d-flex align-items-center">
+                    <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                        <label class="form-check-label" for="autoRefresh">
+                            Auto Refresh
+                        </label>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshLogs()">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Table View -->
+                <div id="tableView" class="view-container">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th style="width: 150px;">Timestamp</th>
+                                    <th style="width: 80px;">Level</th>
+                                    <th style="width: 100px;">Host</th>
+                                    <th style="width: 120px;">Application</th>
+                                    <th style="width: 120px;">Component</th>
+                                    <th>Message</th>
+                                    <th style="width: 80px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logsTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        <i class="fas fa-search fa-2x mb-2"></i><br>
+                                        Use the search form above to find logs
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Raw View -->
+                <div id="rawView" class="view-container" style="display: none;">
+                    <pre id="rawLogsContent" class="bg-dark text-light p-3 rounded" style="height: 600px; overflow-y: auto;">
+Use the search form above to find logs
+                    </pre>
+                </div>
+                
+                <!-- Timeline View -->
+                <div id="timelineView" class="view-container" style="display: none;">
+                    <div id="timelineLogs" class="timeline-container" style="height: 600px; overflow-y: auto;">
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-timeline fa-2x mb-2"></i><br>
+                            Use the search form above to find logs
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Pagination -->
+                <div id="pagination" class="d-flex justify-content-between align-items-center mt-3" style="display: none;">
+                    <div class="text-muted">
+                        Showing <span id="showingStart">0</span> to <span id="showingEnd">0</span> of <span id="totalResults">0</span> results
+                    </div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="paginationList">
+                            <!-- Pagination items will be generated here -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Log Details Modal -->
+<div class="modal fade" id="logDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-info-circle me-2"></i>Log Entry Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="logDetailsContent">
+                    <!-- Log details will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="copyLogDetails()">
+                    <i class="fas fa-copy me-2"></i>Copy to Clipboard
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Log Viewer specific JavaScript
+let currentLogs = [];
+let currentPage = 1;
+let totalPages = 1;
+let currentViewMode = 'table';
+
+$(document).ready(function() {
+    initializeLogViewer();
+    setupEventListeners();
+});
+
+function initializeLogViewer() {
+    // Load initial data if there are URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('search') || urlParams.has('refresh_id')) {
+        populateFormFromURL(urlParams);
+        performSearch();
+    }
+}
+
+function setupEventListeners() {
+    // Search form submission
+    $('#searchForm').on('submit', function(e) {
+        e.preventDefault();
+        performSearch();
+    });
+    
+    // View mode changes
+    $('input[name="viewMode"]').change(function() {
+        currentViewMode = $(this).val();
+        switchViewMode();
+    });
+    
+    // Auto refresh
+    setInterval(function() {
+        if ($('#autoRefresh').is(':checked') && currentLogs.length > 0) {
+            performSearch();
+        }
+    }, 30000);
+}
+
+function populateFormFromURL(urlParams) {
+    if (urlParams.has('search')) {
+        $('#searchQuery').val(urlParams.get('search'));
+    }
+    if (urlParams.has('refresh_id')) {
+        $('#refreshId').val(urlParams.get('refresh_id'));
+    }
+    if (urlParams.has('host')) {
+        $('#hostSelect').val(urlParams.get('host'));
+    }
+    if (urlParams.has('level')) {
+        $('#levelSelect').val(urlParams.get('level'));
+    }
+}
+
+function performSearch() {
+    const formData = {
+        q: $('#searchQuery').val(),
+        host: $('#hostSelect').val(),
+        application: $('#applicationSelect').val(),
+        component: $('#componentSelect').val(),
+        level: $('#levelSelect').val(),
+        time: $('#timeRange').val(),
+        refresh_id: $('#refreshId').val(),
+        pattern: $('#regexPattern').val(),
+        limit: 100,
+        offset: (currentPage - 1) * 100
+    };
+    
+    // Remove empty parameters
+    Object.keys(formData).forEach(key => {
+        if (!formData[key]) {
+            delete formData[key];
+        }
+    });
+    
+    // Show loading
+    showLoading();
+    
+    $.get('/api/dashboard/search', formData)
+        .done(function(data) {
+            currentLogs = data.results || [];
+            updateSearchSummary(data);
+            displayLogs(currentLogs);
+            updatePagination(data.pagination);
+        })
+        .fail(function(xhr) {
+            showError('Search failed: ' + (xhr.responseJSON?.error || 'Unknown error'));
+            clearResults();
+        });
+}
+
+function showLoading() {
+    $('#logsTableBody').html('<tr><td colspan="7" class="text-center"><i class="fas fa-spinner fa-spin"></i> Searching...</td></tr>');
+    $('#rawLogsContent').text('Searching...');
+    $('#timelineLogs').html('<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Searching...</div>');
+}
+
+function updateSearchSummary(data) {
+    const pagination = data.pagination || {};
+    const analytics = data.analytics || {};
+    
+    let summary = `Found ${pagination.total_count || 0} results`;
+    
+    if (analytics.level_distribution) {
+        const levels = Object.entries(analytics.level_distribution)
+            .map(([level, count]) => `${count} ${level}`)
+            .join(', ');
+        summary += ` (${levels})`;
+    }
+    
+    if (analytics.refresh_distribution) {
+        const refreshCount = Object.keys(analytics.refresh_distribution).length;
+        summary += ` across ${refreshCount} workflows`;
+    }
+    
+    $('#searchSummary').text(summary);
+}
+
+function displayLogs(logs) {
+    switch(currentViewMode) {
+        case 'table':
+            displayTableView(logs);
+            break;
+        case 'raw':
+            displayRawView(logs);
+            break;
+        case 'timeline':
+            displayTimelineView(logs);
+            break;
+    }
+}
+
+function displayTableView(logs) {
+    const tbody = $('#logsTableBody');
+    tbody.empty();
+    
+    if (!logs.length) {
+        tbody.html('<tr><td colspan="7" class="text-center text-muted">No logs found</td></tr>');
+        return;
+    }
+    
+    logs.forEach((log, index) => {
+        const levelBadge = getLevelBadge(log.level);
+        const timestamp = formatTimestamp(log.timestamp);
+        const metadata = log.metadata || {};
+        
+        const row = `
+            <tr>
+                <td><small>${timestamp}</small></td>
+                <td>${levelBadge}</td>
+                <td><small>${log.host}</small></td>
+                <td><small>${log.application || '-'}</small></td>
+                <td><small>${log.component || '-'}</small></td>
+                <td class="log-message">${escapeHtml(log.message)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-info" onclick="viewLogDetails(${index})">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.append(row);
+    });
+}
+
+function displayRawView(logs) {
+    const content = logs.map(log => {
+        return `${log.timestamp} ${log.level} [${log.host}] ${log.message}`;
+    }).join('\n');
+    
+    $('#rawLogsContent').text(content || 'No logs found');
+}
+
+function displayTimelineView(logs) {
+    const container = $('#timelineLogs');
+    container.empty();
+    
+    if (!logs.length) {
+        container.html('<div class="text-center text-muted">No logs found</div>');
+        return;
+    }
+    
+    logs.forEach(log => {
+        const levelClass = getLevelClass(log.level);
+        const timelineItem = `
+            <div class="timeline-item mb-3">
+                <div class="d-flex">
+                    <div class="timeline-marker ${levelClass} me-3">
+                        <i class="fas ${getLevelIcon(log.level)}"></i>
+                    </div>
+                    <div class="timeline-content flex-grow-1">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h6 class="mb-1">${escapeHtml(log.message)}</h6>
+                            <small class="text-muted">${formatTimestamp(log.timestamp)}</small>
+                        </div>
+                        <small class="text-muted">
+                            ${log.host} • ${log.application || 'Unknown'} • ${log.component || 'Unknown'}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.append(timelineItem);
+    });
+}
+
+function switchViewMode() {
+    $('.view-container').hide();
+    $(`#${currentViewMode}View`).show();
+    displayLogs(currentLogs);
+}
+
+function getLevelBadge(level) {
+    const levelClass = getLevelClass(level);
+    return `<span class="badge ${levelClass}">${level}</span>`;
+}
+
+function getLevelClass(level) {
+    switch(level) {
+        case 'ERROR': return 'bg-danger';
+        case 'WARN': return 'bg-warning';
+        case 'INFO': return 'bg-info';
+        case 'DEBUG': return 'bg-secondary';
+        default: return 'bg-light text-dark';
+    }
+}
+
+function getLevelIcon(level) {
+    switch(level) {
+        case 'ERROR': return 'fa-times-circle';
+        case 'WARN': return 'fa-exclamation-triangle';
+        case 'INFO': return 'fa-info-circle';
+        case 'DEBUG': return 'fa-bug';
+        default: return 'fa-circle';
+    }
+}
+
+function updatePagination(pagination) {
+    if (!pagination || pagination.total_count <= 100) {
+        $('#pagination').hide();
+        return;
+    }
+    
+    $('#pagination').show();
+    $('#showingStart').text(pagination.offset + 1);
+    $('#showingEnd').text(Math.min(pagination.offset + pagination.returned_count, pagination.total_count));
+    $('#totalResults').text(pagination.total_count);
+    
+    totalPages = Math.ceil(pagination.total_count / 100);
+    generatePaginationLinks();
+}
+
+function generatePaginationLinks() {
+    const list = $('#paginationList');
+    list.empty();
+    
+    // Previous button
+    const prevDisabled = currentPage === 1 ? 'disabled' : '';
+    list.append(`<li class="page-item ${prevDisabled}"><a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a></li>`);
+    
+    // Page numbers (show max 5 pages)
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, startPage + 4);
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const active = i === currentPage ? 'active' : '';
+        list.append(`<li class="page-item ${active}"><a class="page-link" href="#" onclick="changePage(${i})">${i}</a></li>`);
+    }
+    
+    // Next button
+    const nextDisabled = currentPage === totalPages ? 'disabled' : '';
+    list.append(`<li class="page-item ${nextDisabled}"><a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a></li>`);
+}
+
+function changePage(page) {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    currentPage = page;
+    performSearch();
+}
+
+function clearFilters() {
+    $('#searchForm')[0].reset();
+    $('#hostSelect').val('ssdev');
+    $('#timeRange').val('last 1 hour');
+    clearResults();
+}
+
+function clearResults() {
+    currentLogs = [];
+    $('#searchSummary').text('Ready to search logs...');
+    $('#logsTableBody').html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-search fa-2x mb-2"></i><br>Use the search form above to find logs</td></tr>');
+    $('#rawLogsContent').text('Use the search form above to find logs');
+    $('#timelineLogs').html('<div class="text-center text-muted py-4"><i class="fas fa-timeline fa-2x mb-2"></i><br>Use the search form above to find logs</div>');
+    $('#pagination').hide();
+}
+
+function refreshLogs() {
+    if (currentLogs.length > 0) {
+        performSearch();
+    }
+}
+
+function exportLogs() {
+    if (!currentLogs.length) {
+        showError('No logs to export');
+        return;
+    }
+    
+    const csv = convertLogsToCSV(currentLogs);
+    downloadCSV(csv, 'logs_export.csv');
+}
+
+function convertLogsToCSV(logs) {
+    const headers = ['Timestamp', 'Level', 'Host', 'Application', 'Component', 'Message'];
+    const rows = logs.map(log => [
+        log.timestamp,
+        log.level,
+        log.host,
+        log.application || '',
+        log.component || '',
+        log.message.replace(/"/g, '""')
+    ]);
+    
+    return [headers, ...rows].map(row => 
+        row.map(field => `"${field}"`).join(',')
+    ).join('\n');
+}
+
+function downloadCSV(csv, filename) {
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
+function viewLogDetails(index) {
+    const log = currentLogs[index];
+    if (!log) return;
+    
+    const details = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Basic Information</h6>
+                <table class="table table-sm">
+                    <tr><td><strong>Timestamp:</strong></td><td>${log.timestamp}</td></tr>
+                    <tr><td><strong>Level:</strong></td><td>${getLevelBadge(log.level)}</td></tr>
+                    <tr><td><strong>Host:</strong></td><td>${log.host}</td></tr>
+                    <tr><td><strong>Application:</strong></td><td>${log.application || 'N/A'}</td></tr>
+                    <tr><td><strong>Component:</strong></td><td>${log.component || 'N/A'}</td></tr>
+                    <tr><td><strong>Step:</strong></td><td>${log.step || 'N/A'}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6>Metadata</h6>
+                <pre class="bg-light p-2 rounded"><code>${JSON.stringify(log.metadata || {}, null, 2)}</code></pre>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-12">
+                <h6>Message</h6>
+                <div class="bg-light p-3 rounded">
+                    <code>${escapeHtml(log.message)}</code>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    $('#logDetailsContent').html(details);
+    $('#logDetailsModal').modal('show');
+}
+
+function copyLogDetails() {
+    const content = $('#logDetailsContent').text();
+    navigator.clipboard.writeText(content).then(() => {
+        showSuccess('Log details copied to clipboard');
+    });
+}
+
+function formatTimestamp(timestamp) {
+    return new Date(timestamp).toLocaleString();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

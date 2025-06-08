@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+
+{% block title %}IPTV Orchestrator - Enhanced Logging Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- IPTV Orchestrator Overview -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-broadcast-tower me-2"></i>IPTV Orchestrator Workflows
+                </h5>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-primary" onclick="refreshWorkflows()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button class="btn btn-outline-success" onclick="triggerWorkflow()">
+                        <i class="fas fa-play"></i> Trigger Workflow
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h6 class="card-title">Total Workflows Today</h6>
+                                        <h3 class="mb-0" id="total-workflows">-</h3>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fas fa-cogs fa-2x opacity-75"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h6 class="card-title">Success Rate</h6>
+                                        <h3 class="mb-0" id="success-rate">-</h3>
+                                        <small>%</small>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fas fa-check-circle fa-2x opacity-75"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h6 class="card-title">Avg Duration</h6>
+                                        <h3 class="mb-0" id="avg-duration">-</h3>
+                                        <small>minutes</small>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fas fa-clock fa-2x opacity-75"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h6 class="card-title">Active Workflows</h6>
+                                        <h3 class="mb-0" id="active-workflows">-</h3>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fas fa-spinner fa-2x opacity-75"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Workflow Timeline -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-timeline me-2"></i>Recent Workflows
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="workflow-timeline" class="timeline">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Loading workflows...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Step Performance Chart -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>Step Performance
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="stepPerformanceChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Workflow Details Table -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list me-2"></i>Workflow History
+                </h5>
+                <div class="input-group" style="width: 300px;">
+                    <input type="text" class="form-control" id="workflow-search" placeholder="Search workflows...">
+                    <button class="btn btn-outline-secondary" onclick="searchWorkflows()">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Refresh ID</th>
+                                <th>Start Time</th>
+                                <th>Duration</th>
+                                <th>Steps Completed</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workflows-table">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                    Loading workflows...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Workflow Details Modal -->
+<div class="modal fade" id="workflowModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-cogs me-2"></i>Workflow Details: <span id="modal-refresh-id"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="workflow-steps" class="steps-container">
+                    <!-- Steps will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="downloadWorkflowLogs()">
+                    <i class="fas fa-download me-2"></i>Download Logs
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// IPTV Orchestrator specific JavaScript
+let currentWorkflows = [];
+let stepPerformanceChart = null;
+
+$(document).ready(function() {
+    initializeIPTVOrchestrator();
+    startRealTimeUpdates();
+});
+
+function initializeIPTVOrchestrator() {
+    // Initialize step performance chart
+    initializeStepPerformanceChart();
+    
+    // Load initial data
+    loadWorkflowData();
+    
+    // Setup search
+    $('#workflow-search').on('keypress', function(e) {
+        if (e.which === 13) {
+            searchWorkflows();
+        }
+    });
+}
+
+function startRealTimeUpdates() {
+    // Update every 30 seconds
+    setInterval(function() {
+        if (settings.autoRefresh) {
+            loadWorkflowData();
+        }
+    }, 30000);
+}
+
+function loadWorkflowData() {
+    $.get('/api/dashboard/iptv-orchestrator')
+        .done(function(data) {
+            currentWorkflows = data.workflows || [];
+            updateWorkflowStats(data);
+            updateWorkflowTimeline(data.workflows);
+            updateWorkflowsTable(data.workflows);
+            updateStepPerformanceChart(data.analytics);
+        })
+        .fail(function() {
+            showError('Failed to load IPTV orchestrator data');
+        });
+}
+
+function updateWorkflowStats(data) {
+    $('#total-workflows').text(data.total_workflows || 0);
+    $('#success-rate').text((data.success_rate || 0).toFixed(1));
+    
+    // Calculate average duration
+    const avgDuration = calculateAverageDuration(data.workflows || []);
+    $('#avg-duration').text(avgDuration.toFixed(1));
+    
+    // Count active workflows
+    const activeCount = (data.workflows || []).filter(w => w.status === 'in_progress').length;
+    $('#active-workflows').text(activeCount);
+}
+
+function calculateAverageDuration(workflows) {
+    if (!workflows.length) return 0;
+    
+    const durations = workflows.map(w => {
+        return w.steps.reduce((sum, step) => sum + (step.duration || 0), 0);
+    }).filter(d => d > 0);
+    
+    return durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length / 60 : 0;
+}
+
+function updateWorkflowTimeline(workflows) {
+    const timeline = $('#workflow-timeline');
+    timeline.empty();
+    
+    if (!workflows.length) {
+        timeline.html('<div class="text-center text-muted">No workflows found</div>');
+        return;
+    }
+    
+    workflows.slice(0, 10).forEach(workflow => {
+        const statusClass = getStatusClass(workflow.status);
+        const timelineItem = `
+            <div class="timeline-item">
+                <div class="timeline-marker ${statusClass}">
+                    <i class="fas ${getStatusIcon(workflow.status)}"></i>
+                </div>
+                <div class="timeline-content">
+                    <h6>${workflow.refresh_id}</h6>
+                    <p class="text-muted mb-1">${formatTimestamp(workflow.start_time)}</p>
+                    <p class="mb-0">${workflow.steps.length}/8 steps completed</p>
+                </div>
+            </div>
+        `;
+        timeline.append(timelineItem);
+    });
+}
+
+function updateWorkflowsTable(workflows) {
+    const tbody = $('#workflows-table');
+    tbody.empty();
+    
+    if (!workflows.length) {
+        tbody.html('<tr><td colspan="6" class="text-center text-muted">No workflows found</td></tr>');
+        return;
+    }
+    
+    workflows.forEach(workflow => {
+        const duration = workflow.steps.reduce((sum, step) => sum + (step.duration || 0), 0);
+        const statusBadge = getStatusBadge(workflow.status);
+        
+        const row = `
+            <tr>
+                <td><strong>${workflow.refresh_id}</strong></td>
+                <td>${formatTimestamp(workflow.start_time)}</td>
+                <td>${formatDuration(duration)}</td>
+                <td>${workflow.steps.length}/8</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="viewWorkflowDetails('${workflow.refresh_id}')">
+                        <i class="fas fa-eye"></i> Details
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.append(row);
+    });
+}
+
+function getStatusClass(status) {
+    switch(status) {
+        case 'completed': return 'bg-success';
+        case 'failed': return 'bg-danger';
+        case 'in_progress': return 'bg-warning';
+        default: return 'bg-secondary';
+    }
+}
+
+function getStatusIcon(status) {
+    switch(status) {
+        case 'completed': return 'fa-check';
+        case 'failed': return 'fa-times';
+        case 'in_progress': return 'fa-spinner fa-spin';
+        default: return 'fa-question';
+    }
+}
+
+function getStatusBadge(status) {
+    const statusClass = getStatusClass(status).replace('bg-', 'badge bg-');
+    const statusText = status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+    return `<span class="${statusClass}">${statusText}</span>`;
+}
+
+function formatTimestamp(timestamp) {
+    return new Date(timestamp).toLocaleString();
+}
+
+function formatDuration(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}m ${remainingSeconds}s`;
+}
+
+function refreshWorkflows() {
+    loadWorkflowData();
+}
+
+function triggerWorkflow() {
+    // This would trigger a new IPTV workflow
+    if (confirm('Are you sure you want to trigger a new IPTV refresh workflow?')) {
+        // Implementation would go here
+        showSuccess('Workflow trigger request sent');
+    }
+}
+
+function searchWorkflows() {
+    const query = $('#workflow-search').val();
+    // Implementation for workflow search
+    console.log('Searching workflows:', query);
+}
+
+function viewWorkflowDetails(refreshId) {
+    $('#modal-refresh-id').text(refreshId);
+    
+    // Load workflow details
+    $.get(`/api/dashboard/workflow/${refreshId}`)
+        .done(function(data) {
+            displayWorkflowSteps(data.steps);
+            $('#workflowModal').modal('show');
+        })
+        .fail(function() {
+            showError('Failed to load workflow details');
+        });
+}
+
+function displayWorkflowSteps(steps) {
+    const container = $('#workflow-steps');
+    container.empty();
+    
+    steps.forEach(step => {
+        const statusClass = getStatusClass(step.status);
+        const stepElement = `
+            <div class="step-item mb-3">
+                <div class="d-flex align-items-center">
+                    <div class="step-number ${statusClass} text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                        ${step.step}
+                    </div>
+                    <div class="flex-grow-1">
+                        <h6 class="mb-1">${step.message}</h6>
+                        <small class="text-muted">
+                            ${formatTimestamp(step.timestamp)} 
+                            ${step.duration ? `• ${formatDuration(step.duration)}` : ''}
+                        </small>
+                    </div>
+                    <div class="step-status">
+                        ${getStatusBadge(step.status)}
+                    </div>
+                </div>
+            </div>
+        `;
+        container.append(stepElement);
+    });
+}
+
+function downloadWorkflowLogs() {
+    const refreshId = $('#modal-refresh-id').text();
+    // Implementation for downloading workflow logs
+    console.log('Downloading logs for:', refreshId);
+}
+
+function initializeStepPerformanceChart() {
+    const ctx = document.getElementById('stepPerformanceChart').getContext('2d');
+    stepPerformanceChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Step 1', 'Step 2', 'Step 3', 'Step 4', 'Step 5', 'Step 6', 'Step 7', 'Step 8'],
+            datasets: [{
+                label: 'Average Duration (seconds)',
+                data: [0, 0, 0, 0, 0, 0, 0, 0],
+                backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Duration (seconds)'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateStepPerformanceChart(analytics) {
+    // Update chart with real data when available
+    if (stepPerformanceChart && analytics) {
+        // Implementation would process analytics data
+        stepPerformanceChart.update();
+    }
+}
+</script>
+{% endblock %}

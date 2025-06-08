@@ -41,13 +41,25 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'log_viewer' %}active{% endif %}" 
+                        <a class="nav-link {% if request.endpoint == 'log_viewer' %}active{% endif %}"
                            href="{{ url_for('log_viewer') }}">
                             <i class="fas fa-list-alt me-1"></i>Log Viewer
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'metrics_page' %}active{% endif %}" 
+                        <a class="nav-link {% if request.endpoint == 'iptv_orchestrator_page' %}active{% endif %}"
+                           href="{{ url_for('iptv_orchestrator_page') }}">
+                            <i class="fas fa-broadcast-tower me-1"></i>IPTV Orchestrator
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'workflow_analysis_page' %}active{% endif %}"
+                           href="{{ url_for('workflow_analysis_page') }}">
+                            <i class="fas fa-project-diagram me-1"></i>Workflow Analysis
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'metrics_page' %}active{% endif %}"
                            href="{{ url_for('metrics_page') }}">
                             <i class="fas fa-chart-line me-1"></i>Metrics
                         </a>

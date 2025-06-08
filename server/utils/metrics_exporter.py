@@ -7,20 +7,27 @@ import time
 import psutil
 from typing import Dict, Any, Optional
 from loguru import logger
-from prometheus_client import Counter, Histogram, Gauge, Info
+from prometheus_client import Counter, Histogram, Gauge, Info, CollectorRegistry, REGISTRY
 
 class MetricsExporter:
     """Prometheus metrics exporter for logging server."""
     
     def __init__(self):
         """Initialize metrics collectors."""
-        
-        # Log ingestion metrics
-        self.logs_ingested_total = Counter(
-            'logs_ingested_total', 
-            'Total number of logs ingested',
-            ['host', 'application', 'component', 'level']
-        )
+
+        try:
+            # Log ingestion metrics
+            self.logs_ingested_total = Counter(
+                'logs_ingested_total',
+                'Total number of logs ingested',
+                ['host', 'application', 'component', 'level']
+            )
+        except ValueError:
+            # Metric already exists, get existing one
+            for collector in REGISTRY._collector_to_names:
+                if hasattr(collector, '_name') and collector._name == 'logs_ingested_total':
+                    self.logs_ingested_total = collector
+                    break
         
         # Processing metrics
         self.log_processing_duration = Histogram(
