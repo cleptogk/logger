@@ -28,16 +28,16 @@ log_files_cache = {}
 COMPONENT_PATTERNS = {
     'sports-scheduler': {
         'iptv-orchestrator': {
-            'patterns': [r'iptv.?refresh', r'orchestrator', r'workflow', r'sports_scheduler\.iptv_orchestrator'],
+            'patterns': [r'iptv.?refresh', r'orchestrator', r'workflow', r'sports_scheduler\.iptv_orchestrator', r'\[Refresh-\d+\]'],
             'steps': {
-                'step-1': [r'step\s*1/8', r'step\s*1\s*:', r'purge.*xtream', r'purging.*xtream'],
+                'step-1': [r'step\s*1/8', r'step\s*1\s*:', r'purge.*xtream', r'purging.*xtream.*provider.*data'],
                 'step-2': [r'step\s*2/8', r'step\s*2\s*:', r'refresh.*xtream.*channels', r'refreshing.*xtream.*channels'],
-                'step-3': [r'step\s*3/8', r'step\s*3\s*:', r'refresh.*xtream.*epg', r'refreshing.*xtream.*epg'],
+                'step-3': [r'step\s*3/8', r'step\s*3\s*:', r'refresh.*xtream.*epg', r'refreshing.*xtream.*epg.*data'],
                 'step-4': [r'step\s*4/8', r'step\s*4\s*:', r'purge.*epg.*database', r'purging.*epg.*database'],
                 'step-5': [r'step\s*5/8', r'step\s*5\s*:', r'refresh.*epg.*database', r'refreshing.*epg.*database'],
-                'step-6': [r'step\s*6/8', r'step\s*6\s*:', r'generate.*sports.*playlist', r'generating.*sports.*playlist'],
+                'step-6': [r'step\s*6/8', r'step\s*6\s*:', r'generat.*sports.*playlist', r'generating.*sports.*playlist'],
                 'step-7': [r'step\s*7/8', r'step\s*7\s*:', r'refresh.*channels.*dvr', r'refreshing.*channels.*dvr'],
-                'step-8': [r'step\s*8/8', r'step\s*8\s*:', r'process.*automated.*recordings', r'automated.*recordings']
+                'step-8': [r'step\s*8/8', r'step\s*8\s*:', r'process.*automated.*record', r'automated.*record.*rules']
             }
         },
         'epg-processor': {
@@ -344,9 +344,13 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                             continue  # Skip if application filter doesn't match
                     else:
                         # Try to detect application from enhanced logging patterns
-                        if 'sports_scheduler.' in line or 'sports-scheduler' in line.lower() or 'iptv' in line.lower() or 'orchestrator' in line.lower() or 'Step' in line:
+                        if ('sports_scheduler.' in line or 'sports-scheduler' in line.lower() or
+                            'iptv' in line.lower() or 'orchestrator' in line.lower() or
+                            'Step' in line or '[Refresh-' in line or
+                            'refresh workflow' in line.lower()):
                             detected_app = 'sports-scheduler'
-                        elif 'auto_scraper.' in line or 'auto-scraper' in line.lower() or 'scraper' in line.lower() or 'list creator' in line.lower():
+                        elif ('auto_scraper.' in line or 'auto-scraper' in line.lower() or
+                              'scraper' in line.lower() or 'list creator' in line.lower()):
                             detected_app = 'auto-scraper'
                         elif 'nginx' in line.lower():
                             detected_app = 'nginx'
@@ -395,8 +399,39 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                             continue
 
                     # 4. Refresh ID filtering
-                    if refresh_id and f'[{refresh_id}]' not in line:
-                        continue
+                    if refresh_id:
+                        # Support both old and new refresh ID formats
+                        if (f'[{refresh_id}]' not in line and
+                            f'[Refresh-{refresh_id.replace("Refresh-", "")}]' not in line):
+                            continue
+
+                    # Extract enhanced metadata from new logging format
+                    metadata = {}
+
+                    # Extract step information (enhanced format: Step X/8)
+                    step_match = re.search(r'step\s*(\d+)(?:/8)?', line, re.IGNORECASE)
+                    if step_match:
+                        metadata['step_number'] = int(step_match.group(1))
+
+                    # Extract refresh ID (enhanced format: [Refresh-XX])
+                    refresh_match = re.search(r'\[Refresh-(\d+)\]', line)
+                    if refresh_match:
+                        metadata['refresh_id'] = f"Refresh-{refresh_match.group(1)}"
+
+                    # Extract timing information (enhanced format: "in X.XX seconds")
+                    timing_match = re.search(r'(?:in\s+)?(\d+\.?\d*)\s*seconds?', line, re.IGNORECASE)
+                    if timing_match:
+                        metadata['duration_seconds'] = float(timing_match.group(1))
+
+                    # Detect step status
+                    if 'completed successfully' in line.lower():
+                        metadata['step_status'] = 'completed'
+                    elif 'failed' in line.lower():
+                        metadata['step_status'] = 'failed'
+                    elif re.search(r'step\s*\d+/8:', line, re.IGNORECASE) and 'completed' not in line.lower():
+                        metadata['step_status'] = 'started'
+                    elif 'starting.*workflow' in line.lower():
+                        metadata['step_status'] = 'workflow_started'
 
                     log_entry = {
                         'timestamp': log_timestamp.isoformat(),
@@ -406,7 +441,8 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                         'step': detected_step,
                         'level': level,
                         'message': line,
-                        'file_path': str(log_file)
+                        'file_path': str(log_file),
+                        'metadata': metadata
                     }
 
                     logs.append(log_entry)
