@@ -325,51 +325,125 @@ function updateComponentStatus(component, status) {
 }
 
 function loadRecentActivity() {
-    // This would load recent log entries or system events
-    // For now, show placeholder
-    $('#recent-activity').html(`
-        <div class="activity-item">
-            <i class="fas fa-info-circle text-info"></i>
-            <span>System started successfully</span>
-            <small class="text-muted">Just now</small>
-        </div>
-    `);
+    $.get('/api/dashboard/stats')
+        .done(function(data) {
+            const recentLogs = data.analytics?.recent_logs || [];
+            const container = $('#recent-activity');
+            container.empty();
+
+            if (!recentLogs.length) {
+                container.html(`
+                    <div class="activity-item text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        <span>No recent activity</span>
+                        <small>Check log sources</small>
+                    </div>
+                `);
+                return;
+            }
+
+            recentLogs.slice(0, 5).forEach(log => {
+                const levelIcon = getLevelIcon(log.level);
+                const levelClass = getLevelClass(log.level);
+                const timeAgo = formatTimeAgo(log.timestamp);
+
+                const activityItem = `
+                    <div class="activity-item">
+                        <i class="fas ${levelIcon} ${levelClass}"></i>
+                        <span>${escapeHtml(log.message.substring(0, 80))}${log.message.length > 80 ? '...' : ''}</span>
+                        <small class="text-muted">${timeAgo} • ${log.host}</small>
+                    </div>
+                `;
+                container.append(activityItem);
+            });
+        })
+        .fail(function() {
+            $('#recent-activity').html(`
+                <div class="activity-item text-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Failed to load recent activity</span>
+                    <small>API error</small>
+                </div>
+            `);
+        });
 }
 
 function loadActiveSources() {
-    // This would load active log sources
-    // For now, show placeholder data
-    const sources = [
-        { name: 'ssdev', status: 'active', lastSeen: '2 minutes ago', logsToday: 1234, errorRate: 2.1 },
-        { name: 'ssdvr', status: 'active', lastSeen: '1 minute ago', logsToday: 856, errorRate: 0.8 },
-        { name: 'ssmcp', status: 'active', lastSeen: '30 seconds ago', logsToday: 432, errorRate: 1.2 },
-        { name: 'ssrun', status: 'inactive', lastSeen: '1 hour ago', logsToday: 123, errorRate: 0.0 }
-    ];
-    
-    const tbody = $('#sources-table');
-    tbody.empty();
-    
-    sources.forEach(source => {
-        const statusBadge = source.status === 'active' ? 
-            '<span class="badge bg-success">Active</span>' : 
-            '<span class="badge bg-secondary">Inactive</span>';
-        
-        const row = `
-            <tr>
-                <td><strong>${source.name}</strong></td>
-                <td>${statusBadge}</td>
-                <td>${source.lastSeen}</td>
-                <td>${formatNumber(source.logsToday)}</td>
-                <td>${formatPercentage(source.errorRate)}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="viewSourceLogs('${source.name}')">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                </td>
-            </tr>
-        `;
-        tbody.append(row);
-    });
+    $.get('/api/dashboard/stats')
+        .done(function(data) {
+            const activeSources = data.analytics?.active_sources || [];
+            const filesInfo = data.files_info?.log_files || {};
+            const tbody = $('#sources-table');
+            tbody.empty();
+
+            if (!activeSources.length) {
+                tbody.html(`
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">
+                            <i class="fas fa-info-circle me-2"></i>
+                            No active log sources detected
+                        </td>
+                    </tr>
+                `);
+                return;
+            }
+
+            // Get log counts for each source
+            const promises = activeSources.map(source =>
+                $.get(`/api/logs?source=${source}&limit=100`)
+                    .then(response => ({
+                        name: source,
+                        logs: response.logs || [],
+                        total: response.total || 0
+                    }))
+                    .catch(() => ({
+                        name: source,
+                        logs: [],
+                        total: 0
+                    }))
+            );
+
+            Promise.all(promises).then(sourceData => {
+                sourceData.forEach(source => {
+                    const logs = source.logs;
+                    const errorCount = logs.filter(log => ['ERROR', 'WARN'].includes(log.level)).length;
+                    const errorRate = logs.length > 0 ? (errorCount / logs.length) * 100 : 0;
+                    const lastLog = logs[0];
+                    const lastSeen = lastLog ? formatTimeAgo(lastLog.timestamp) : 'No recent logs';
+                    const hasFiles = filesInfo[source] && filesInfo[source].length > 0;
+
+                    const statusBadge = hasFiles && logs.length > 0 ?
+                        '<span class="badge bg-success">Active</span>' :
+                        '<span class="badge bg-secondary">Inactive</span>';
+
+                    const row = `
+                        <tr>
+                            <td><strong>${source}</strong></td>
+                            <td>${statusBadge}</td>
+                            <td>${lastSeen}</td>
+                            <td>${formatNumber(logs.length)}</td>
+                            <td class="${errorRate > 5 ? 'text-danger' : errorRate > 1 ? 'text-warning' : 'text-success'}">${formatPercentage(errorRate)}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewSourceLogs('${source.name}')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.append(row);
+                });
+            });
+        })
+        .fail(function() {
+            $('#sources-table').html(`
+                <tr>
+                    <td colspan="6" class="text-center text-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Failed to load active sources
+                    </td>
+                </tr>
+            `);
+        });
 }
 
 function refreshActivity() {
@@ -386,6 +460,46 @@ function formatNumber(num) {
 
 function formatPercentage(num) {
     return num.toFixed(1) + '%';
+}
+
+function getLevelIcon(level) {
+    switch(level) {
+        case 'ERROR': return 'fa-times-circle';
+        case 'WARN': return 'fa-exclamation-triangle';
+        case 'INFO': return 'fa-info-circle';
+        case 'DEBUG': return 'fa-bug';
+        default: return 'fa-circle';
+    }
+}
+
+function getLevelClass(level) {
+    switch(level) {
+        case 'ERROR': return 'text-danger';
+        case 'WARN': return 'text-warning';
+        case 'INFO': return 'text-info';
+        case 'DEBUG': return 'text-secondary';
+        default: return 'text-muted';
+    }
+}
+
+function formatTimeAgo(timestamp) {
+    const now = new Date();
+    const logTime = new Date(timestamp);
+    const diffMs = now - logTime;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+    return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 </script>
 {% endblock %}

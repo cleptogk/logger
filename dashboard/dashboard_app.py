@@ -94,21 +94,30 @@ def get_dashboard_stats():
         files_response = requests.get(f"{logging_server_url}/logger/files", timeout=5)
         files_data = files_response.json() if files_response.status_code == 200 else {}
 
-        # Get recent logs for stats calculation
-        recent_logs_response = requests.get(f"{logging_server_url}/logger/host=ssdev?limit=1000", timeout=10)
-        recent_logs = recent_logs_response.json() if recent_logs_response.status_code == 200 else {}
+        # Get stats from the new /api/stats endpoint
+        stats_response = requests.get(f"{logging_server_url}/api/stats", timeout=10)
+        api_stats = stats_response.json() if stats_response.status_code == 200 else {}
 
-        # Calculate stats from recent logs
-        logs_list = recent_logs.get('logs', [])
-        total_logs_today = len(logs_list)
+        # Get recent logs for additional processing
+        recent_logs_response = requests.get(f"{logging_server_url}/api/logs?source=ssdev&limit=100", timeout=10)
+        recent_logs_data = recent_logs_response.json() if recent_logs_response.status_code == 200 else {}
+        logs_list = recent_logs_data.get('logs', [])
 
-        # Calculate level distribution
+        # Use API stats or calculate from logs
+        total_logs_today = api_stats.get('total_logs_today', len(logs_list))
+
+        # Calculate level distribution from recent logs
         level_distribution = {}
         for log in logs_list:
             level = log.get('level', 'UNKNOWN')
             level_distribution[level] = level_distribution.get(level, 0) + 1
 
-        analytics = {'level_distribution': level_distribution}
+        analytics = {
+            'level_distribution': level_distribution,
+            'active_sources': api_stats.get('active_sources', []),
+            'ingestion_rate': api_stats.get('ingestion_rate', 0),
+            'recent_logs': logs_list[:10]  # Last 10 logs for recent activity
+        }
 
         # Calculate error rate
         error_count = level_distribution.get('ERROR', 0) + level_distribution.get('WARN', 0)
@@ -117,12 +126,13 @@ def get_dashboard_stats():
         # Build comprehensive stats
         stats = {
             'total_logs_today': total_logs_today,
-            'ingestion_rate': calculate_ingestion_rate(recent_logs),
-            'error_rate': error_rate,
-            'disk_usage': get_disk_usage(),
+            'ingestion_rate': api_stats.get('ingestion_rate', calculate_ingestion_rate(recent_logs_data)),
+            'error_rate': api_stats.get('error_rate', error_rate),
+            'disk_usage': api_stats.get('disk_usage', get_disk_usage()),
             'health_data': health_data,
             'files_info': files_data,
             'analytics': analytics,
+            'api_stats': api_stats,  # Include raw API stats
             'dashboard': {
                 'active_connections': len(socketio.server.manager.rooms.get('/', {})),
                 'uptime': get_dashboard_uptime(),
