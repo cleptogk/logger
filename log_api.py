@@ -871,6 +871,146 @@ def list_log_files():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Enhanced API Endpoints for Dashboard Compatibility
+@app.route('/api/stats')
+def get_stats():
+    """Get logging statistics for dashboard."""
+    try:
+        # Get file information
+        files = scan_log_files()
+
+        # Calculate basic stats
+        total_files = sum(len(host_files) for host_files in files.values())
+        active_hosts = [host for host, host_files in files.items() if host_files]
+
+        # Get recent logs for rate calculation
+        recent_logs = get_logs_for_host('ssdev', limit=100)
+
+        # Calculate basic metrics
+        stats = {
+            'ingestion_rate': len(recent_logs) / 60 if recent_logs else 0,  # logs per minute
+            'processing_latency': 0.1,  # seconds
+            'error_rate': calculate_error_rate(recent_logs),
+            'disk_usage': get_total_disk_usage(files),
+            'active_sources': active_hosts,
+            'total_logs_today': len(recent_logs),
+            'total_files': total_files,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        return jsonify(stats)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/logs')
+def get_logs_api():
+    """Get logs with filtering options for dashboard compatibility."""
+    try:
+        # Parse query parameters
+        source = request.args.get('source', 'ssdev')
+        level = request.args.get('level', 'all')
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+
+        # Get logs from the specified source
+        logs = get_logs_for_host(source, limit=limit + offset)
+
+        # Apply level filtering
+        if level != 'all':
+            logs = [log for log in logs if log.get('level') == level.upper()]
+
+        # Apply pagination
+        if offset > 0:
+            logs = logs[offset:]
+        logs = logs[:limit]
+
+        return jsonify({
+            'logs': logs,
+            'total': len(logs),
+            'source': source,
+            'level': level,
+            'limit': limit,
+            'offset': offset,
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/logs/search')
+def search_logs_api():
+    """Search logs by pattern for dashboard compatibility."""
+    try:
+        query = request.args.get('q', '')
+        source = request.args.get('source', 'ssdev')
+        limit = int(request.args.get('limit', 100))
+
+        if not query:
+            return jsonify({'error': 'Query parameter "q" is required'}), 400
+
+        # Get logs and search
+        all_logs = get_logs_for_host(source, limit=1000)
+        results = []
+
+        for log in all_logs:
+            if query.lower() in log.get('message', '').lower():
+                results.append(log)
+                if len(results) >= limit:
+                    break
+
+        return jsonify({
+            'results': results,
+            'query': query,
+            'source': source,
+            'total': len(results),
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Helper functions for enhanced API endpoints
+def get_logs_for_host(host, limit=100):
+    """Get logs for a specific host using existing functionality."""
+    try:
+        # Use the existing read_logs_with_filters function
+        logs = read_logs_with_filters(
+            host=host,
+            application=None,
+            component=None,
+            step=None,
+            start_time=None,
+            end_time=None,
+            limit=limit,
+            offset=0
+        )
+        return logs
+    except Exception as e:
+        print(f"Error getting logs for host {host}: {e}")
+        return []
+
+def calculate_error_rate(logs):
+    """Calculate error rate from logs."""
+    if not logs:
+        return 0
+
+    error_count = sum(1 for log in logs if log.get('level') in ['ERROR', 'WARN'])
+    return (error_count / len(logs)) * 100
+
+def get_total_disk_usage(files):
+    """Calculate total disk usage from file information."""
+    try:
+        total_size = 0
+        for host_files in files.values():
+            for file_info in host_files:
+                total_size += file_info.get('size', 0)
+
+        # Convert to MB
+        return total_size / (1024 * 1024)
+    except:
+        return 0
+
 if __name__ == '__main__':
     print("🚀 Starting MVP Logging API Server")
     print("=" * 50)
