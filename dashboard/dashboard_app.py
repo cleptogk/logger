@@ -95,13 +95,20 @@ def get_dashboard_stats():
         files_data = files_response.json() if files_response.status_code == 200 else {}
 
         # Get recent logs for stats calculation
-        recent_logs_response = requests.get(f"{logging_server_url}/logger/search/ssdev?time=today&limit=1000", timeout=10)
+        recent_logs_response = requests.get(f"{logging_server_url}/logger/host=ssdev?limit=1000", timeout=10)
         recent_logs = recent_logs_response.json() if recent_logs_response.status_code == 200 else {}
 
         # Calculate stats from recent logs
-        total_logs_today = recent_logs.get('pagination', {}).get('total_count', 0)
-        analytics = recent_logs.get('analytics', {})
-        level_distribution = analytics.get('level_distribution', {})
+        logs_list = recent_logs.get('logs', [])
+        total_logs_today = len(logs_list)
+
+        # Calculate level distribution
+        level_distribution = {}
+        for log in logs_list:
+            level = log.get('level', 'UNKNOWN')
+            level_distribution[level] = level_distribution.get(level, 0) + 1
+
+        analytics = {'level_distribution': level_distribution}
 
         # Calculate error rate
         error_count = level_distribution.get('ERROR', 0) + level_distribution.get('WARN', 0)
@@ -256,7 +263,7 @@ def get_iptv_orchestrator_data():
             data = response.json()
 
             # Process workflow data
-            workflows = process_workflow_data(data.get('results', []))
+            workflows = process_workflow_data(data.get('logs', []))
             analytics = data.get('analytics', {})
 
             return jsonify({
@@ -281,7 +288,7 @@ def get_workflow_details(refresh_id):
 
         if response.status_code == 200:
             data = response.json()
-            workflow_steps = process_workflow_steps(data.get('results', []))
+            workflow_steps = process_workflow_steps(data.get('logs', []))
 
             return jsonify({
                 'refresh_id': refresh_id,
@@ -369,13 +376,13 @@ def broadcast_metrics_update(metrics):
 def calculate_ingestion_rate(recent_logs):
     """Calculate log ingestion rate from recent logs."""
     try:
-        results = recent_logs.get('results', [])
-        if not results:
+        logs_list = recent_logs.get('logs', [])
+        if not logs_list:
             return 0
 
         # Calculate logs per minute based on recent activity
         # This is a simplified calculation
-        return len(results) / 60  # Assuming results are from last hour
+        return len(logs_list) / 60  # Assuming logs are from last hour
     except:
         return 0
 
