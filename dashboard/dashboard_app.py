@@ -497,7 +497,7 @@ def main():
     
     try:
         # Start SocketIO app
-        socketio.run(app, host=host, port=port, debug=debug)
+        socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")
     except Exception as e:
