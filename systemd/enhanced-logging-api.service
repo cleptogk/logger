@@ -1,0 +1,69 @@
+[Unit]
+Description=Enhanced Logging API Server (Memory Optimized)
+Documentation=https://github.com/cleptogk/logger
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=logserver
+Group=logserver
+WorkingDirectory=/opt/logging/logger
+Environment=PYTHONPATH=/opt/logging/logger
+EnvironmentFile=-/opt/logging/config/environment
+
+# Memory-optimized Gunicorn command
+ExecStart=/opt/logging/venv/bin/gunicorn \
+    --config gunicorn.conf.py \
+    --bind 0.0.0.0:8080 \
+    --workers 2 \
+    --worker-class sync \
+    --worker-connections 100 \
+    --max-requests 500 \
+    --max-requests-jitter 50 \
+    --timeout 30 \
+    --keepalive 2 \
+    --preload \
+    --access-logfile - \
+    --error-logfile - \
+    --log-level info \
+    --proc-name enhanced-logging-api \
+    log_api:app
+
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/logging /var/log/centralized /tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+
+# Resource limits - CRITICAL FOR MEMORY CONTROL
+LimitNOFILE=4096
+LimitNPROC=512
+MemoryMax=512M
+MemoryHigh=400M
+CPUQuota=100%
+TasksMax=256
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=enhanced-logging-api
+
+# Health monitoring
+WatchdogSec=30
+
+[Install]
+WantedBy=multi-user.target

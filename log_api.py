@@ -6,8 +6,7 @@ This bypasses the complex metrics setup for initial testing.
 
 import os
 import sys
-import json
-import time
+import gc
 import re
 import pytz
 from pathlib import Path
@@ -20,9 +19,17 @@ sys.path.insert(0, str(project_root))
 
 app = Flask(__name__)
 
-# Simple in-memory storage for testing
+# Configure Flask for memory efficiency
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max request size
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 300  # 5 minutes cache
+app.config['JSON_SORT_KEYS'] = False  # Don't sort JSON keys to save CPU
+
+# Simple in-memory storage for testing with memory limits
 logs_storage = []
 log_files_cache = {}
+MAX_CACHE_SIZE = 1000  # Limit cache entries
+MAX_LOG_STORAGE = 5000  # Limit stored logs
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB max file size to read
 
 # Enhanced component patterns for detailed tracking
 COMPONENT_PATTERNS = {
@@ -311,14 +318,28 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
     if not log_dir.exists():
         return logs
 
+    # Limit results to prevent memory issues
+    limit = min(limit, 1000)  # Hard cap at 1000 results
+
     # Determine which application to look for
     app_filter = application.lower() if application and application != 'all' else None
 
     for log_file in log_dir.rglob('*.log'):
         if log_file.is_file():
+            # Skip files that are too large
+            if log_file.stat().st_size > MAX_FILE_SIZE:
+                print(f"Skipping large file {log_file} ({log_file.stat().st_size} bytes)")
+                continue
+
             try:
+                # Read file in chunks to avoid memory issues
                 with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                    lines = f.readlines()
+                    # Read only last 10000 lines to limit memory usage
+                    lines = []
+                    for i, line in enumerate(f):
+                        if i > 10000:  # Skip if too many lines
+                            break
+                        lines.append(line)
 
                 for line in lines:
                     line = line.strip()
@@ -447,18 +468,33 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
 
                     logs.append(log_entry)
 
-                    if len(logs) >= limit:
+                    # Break early if we have enough logs to prevent memory issues
+                    if len(logs) >= limit * 2:  # Get a bit more for sorting
                         break
 
             except Exception as e:
                 print(f"Error reading {log_file}: {e}")
 
-    # Sort by timestamp (newest first)
+        # Break if we have enough logs from multiple files
+        if len(logs) >= limit * 3:
+            break
+
+    # Sort by timestamp (newest first) - limit sorting to prevent memory issues
     logs.sort(key=lambda x: x['timestamp'], reverse=True)
 
     # Apply pagination
     if offset > 0:
         logs = logs[offset:]
+
+    # Clean up cache if it gets too large
+    if len(log_files_cache) > MAX_CACHE_SIZE:
+        log_files_cache.clear()
+        gc.collect()  # Force garbage collection
+
+    # Clean up logs storage if it gets too large
+    if len(logs_storage) > MAX_LOG_STORAGE:
+        logs_storage.clear()
+        gc.collect()  # Force garbage collection
 
     return logs[:limit]
 
@@ -468,8 +504,42 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0-mvp'
+        'version': '1.0.0-mvp',
+        'memory_usage': {
+            'cache_size': len(log_files_cache),
+            'storage_size': len(logs_storage)
+        }
     })
+
+@app.route('/api/cleanup', methods=['POST'])
+def cleanup_memory():
+    """Force memory cleanup."""
+    try:
+        # Clear caches
+        cache_size = len(log_files_cache)
+        storage_size = len(logs_storage)
+
+        log_files_cache.clear()
+        logs_storage.clear()
+
+        # Force garbage collection
+        gc.collect()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Memory cleanup completed',
+            'cleared': {
+                'cache_entries': cache_size,
+                'storage_entries': storage_size
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 @app.route('/logger/host=<host>')
 def get_host_logs(host):
@@ -489,6 +559,10 @@ def get_host_logs(host):
         level_filter = request.args.get('level')       # Log level filtering (ERROR,WARN,INFO)
         refresh_id = request.args.get('refresh_id')    # Specific refresh ID filtering
         offset = int(request.args.get('offset', 0))    # Pagination offset
+
+        # Limit parameters to prevent abuse
+        limit = min(limit, 500)  # Hard cap at 500 results per request
+        offset = min(offset, 10000)  # Limit offset to prevent deep pagination
 
         # Parse time filter
         start_time, end_time = parse_time_filter(time_filter)

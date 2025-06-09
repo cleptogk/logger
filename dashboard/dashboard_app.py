@@ -22,14 +22,22 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Flask app
-app = Flask(__name__, 
+# Initialize Flask app with memory optimizations
+app = Flask(__name__,
            template_folder='../web/templates',
            static_folder='../web/static')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
-# Initialize SocketIO for real-time updates
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Configure Flask for memory efficiency
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max request size
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 300  # 5 minutes cache
+app.config['JSON_SORT_KEYS'] = False  # Don't sort JSON keys to save CPU
+
+# Initialize SocketIO for real-time updates with memory limits
+socketio = SocketIO(app, cors_allowed_origins="*",
+                   max_http_buffer_size=1024*1024,  # 1MB buffer
+                   ping_timeout=30,  # 30 second timeout
+                   ping_interval=10)  # 10 second ping interval
 
 # Global components
 redis_client = None
@@ -100,17 +108,17 @@ def get_dashboard_stats():
         stats_response = requests.get(f"{logging_server_url}/api/stats", timeout=10)
         api_stats = stats_response.json() if stats_response.status_code == 200 else {}
 
-        # Get recent logs for additional processing
-        recent_logs_response = requests.get(f"{logging_server_url}/api/logs?source=ssdev&limit=100", timeout=10)
+        # Get recent logs for additional processing - limit to reduce memory usage
+        recent_logs_response = requests.get(f"{logging_server_url}/api/logs?source=ssdev&limit=50", timeout=5)
         recent_logs_data = recent_logs_response.json() if recent_logs_response.status_code == 200 else {}
         logs_list = recent_logs_data.get('logs', [])
 
         # Use API stats or calculate from logs
         total_logs_today = api_stats.get('total_logs_today', len(logs_list))
 
-        # Calculate level distribution from recent logs
+        # Calculate level distribution from recent logs - limit processing
         level_distribution = {}
-        for log in logs_list:
+        for log in logs_list[:50]:  # Only process first 50 logs
             level = log.get('level', 'UNKNOWN')
             level_distribution[level] = level_distribution.get(level, 0) + 1
 
