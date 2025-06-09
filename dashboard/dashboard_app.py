@@ -268,7 +268,7 @@ def get_iptv_orchestrator_data():
         # Use search endpoint instead of specialized IPTV orchestrator endpoint
         response = requests.get(f"{logging_server_url}/logger/search/ssdev",
                               params={'search': 'Refresh-', 'component': 'iptv-orchestrator',
-                                     'time': 'today', 'limit': 100}, timeout=20)
+                                     'time': 'today', 'limit': 100}, timeout=10)
 
         if response.status_code == 200:
             data = response.json()
@@ -288,7 +288,17 @@ def get_iptv_orchestrator_data():
 
     except Exception as e:
         logger.error(f"Failed to get IPTV orchestrator data: {e}")
-        return jsonify({'error': str(e)}), 500
+        # Return empty data structure instead of error to prevent UI from breaking
+        return jsonify({
+            'workflows': [],
+            'total_workflows': 0,
+            'success_rate': 0,
+            'analytics': {
+                'component_distribution': {},
+                'level_distribution': {},
+                'refresh_distribution': {}
+            }
+        })
 
 @app.route('/api/dashboard/workflow/<refresh_id>')
 def get_workflow_details(refresh_id):
