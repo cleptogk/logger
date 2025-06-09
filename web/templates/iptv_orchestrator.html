@@ -242,8 +242,9 @@ function loadWorkflowData() {
             updateWorkflowsTable(data.workflows);
             updateStepPerformanceChart(data.analytics);
         })
-        .fail(function() {
-            showError('Failed to load IPTV orchestrator data');
+        .fail(function(xhr, status, error) {
+            console.error('IPTV orchestrator API call failed:', status, error, xhr.responseText);
+            showError(`Failed to load IPTV orchestrator data: ${status} - ${error}`);
         });
 }
 
