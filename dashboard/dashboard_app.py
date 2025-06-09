@@ -182,7 +182,7 @@ def get_dashboard_logs():
         if search:
             params['search'] = search
 
-        response = requests.get(f"{logging_server_url}{endpoint}", params=params, timeout=10)
+        response = requests.get(f"{logging_server_url}{endpoint}", params=params, timeout=20)
 
         if response.status_code == 200:
             return jsonify(response.json())
@@ -224,7 +224,7 @@ def search_dashboard_logs():
         if refresh_id:
             params['refresh_id'] = refresh_id
 
-        response = requests.get(f"{logging_server_url}/logger/search/{host}", params=params, timeout=10)
+        response = requests.get(f"{logging_server_url}/logger/search/{host}", params=params, timeout=20)
 
         if response.status_code == 200:
             return jsonify(response.json())
@@ -265,9 +265,9 @@ def dashboard_health():
 def get_iptv_orchestrator_data():
     """Get IPTV orchestrator workflow data."""
     try:
-        # Get IPTV orchestrator logs
+        # Get IPTV orchestrator logs with increased timeout
         response = requests.get(f"{logging_server_url}/logger/iptv-orchestrator/ssdev",
-                              params={'time': 'today', 'limit': 500}, timeout=10)
+                              params={'time': 'last 2 hours', 'limit': 100}, timeout=30)
 
         if response.status_code == 200:
             data = response.json()
@@ -294,7 +294,7 @@ def get_workflow_details(refresh_id):
     """Get detailed workflow information for a specific refresh ID."""
     try:
         response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params={'refresh_id': refresh_id, 'limit': 100}, timeout=10)
+                              params={'refresh_id': refresh_id, 'limit': 100}, timeout=20)
 
         if response.status_code == 200:
             data = response.json()
