@@ -6,7 +6,9 @@ Web-based dashboard for log visualization and monitoring.
 
 import os
 import sys
+import logging
 from pathlib import Path
+from datetime import datetime
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent
@@ -15,10 +17,10 @@ sys.path.insert(0, str(project_root))
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 import requests
-from loguru import logger
 
-from server.utils.loguru_config import setup_logging
-from server.utils.redis_client import RedisClient
+# Use basic logging instead of missing dependencies
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__, 
@@ -36,21 +38,21 @@ logging_server_url = None
 def initialize_dashboard():
     """Initialize dashboard components."""
     global redis_client, logging_server_url
-    
+
     logger.info("Initializing logging dashboard...")
-    
+
     try:
-        # Initialize Redis client
-        redis_client = RedisClient()
-        logger.info("✅ Redis client initialized")
-        
+        # Skip Redis for MVP - not critical for basic functionality
+        redis_client = None
+        logger.info("⚠️ Redis client skipped for MVP")
+
         # Set enhanced logging API URL
         logging_server_url = f"http://127.0.0.1:{os.environ.get('LOGGING_API_PORT', 8080)}"
         logger.info(f"✅ Enhanced Logging API URL: {logging_server_url}")
-        
-        logger.success("🎉 Dashboard initialized successfully!")
+
+        logger.info("🎉 Dashboard initialized successfully!")
         return True
-        
+
     except Exception as e:
         logger.error(f"❌ Failed to initialize dashboard: {e}")
         return False
@@ -241,18 +243,16 @@ def dashboard_health():
         response = requests.get(f"{logging_server_url}/health", timeout=5)
         server_health = response.json() if response.status_code == 200 else {'status': 'error'}
         
-        # Check Redis connection
-        redis_status = redis_client.ping() if redis_client else False
-        
+        # Redis not required for MVP
         dashboard_health = {
-            'status': 'healthy' if redis_status and server_health.get('status') == 'healthy' else 'degraded',
+            'status': 'healthy' if server_health.get('status') == 'healthy' else 'degraded',
             'components': {
-                'redis': 'ok' if redis_status else 'error',
+                'redis': 'disabled',  # Redis disabled for MVP
                 'logging_server': server_health.get('status', 'error'),
                 'socketio': 'ok'
             },
             'server_health': server_health,
-            'timestamp': logger._core.now().isoformat()
+            'timestamp': datetime.now().isoformat()
         }
         
         return jsonify(dashboard_health)
@@ -400,7 +400,7 @@ def get_disk_usage():
     """Get disk usage percentage."""
     try:
         import shutil
-        total, used, free = shutil.disk_usage('/var/log/centralized')
+        total, used, _ = shutil.disk_usage('/var/log/centralized')
         return (used / total) * 100
     except:
         return 0
@@ -492,9 +492,7 @@ def get_dashboard_uptime():
 
 def main():
     """Main dashboard entry point."""
-    # Setup logging
-    setup_logging()
-    
+    # Basic logging already configured
     logger.info("🚀 Starting Centralized Logging Dashboard")
     logger.info("=" * 50)
     
