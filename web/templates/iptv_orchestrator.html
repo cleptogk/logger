@@ -200,18 +200,13 @@ let currentWorkflows = [];
 let stepPerformanceChart = null;
 
 $(document).ready(function() {
-    // Wait for Chart.js to load before initializing
-    function waitForChart() {
-        if (typeof Chart !== 'undefined') {
-            console.log('Chart.js loaded, initializing IPTV orchestrator');
-            initializeIPTVOrchestrator();
-            startRealTimeUpdates();
-        } else {
-            console.log('Waiting for Chart.js to load...');
-            setTimeout(waitForChart, 100);
-        }
-    }
-    waitForChart();
+    console.log('IPTV Orchestrator page ready, initializing...');
+
+    // Initialize without waiting for Chart.js (make charts optional)
+    initializeIPTVOrchestrator();
+    startRealTimeUpdates();
+
+    console.log('IPTV Orchestrator initialization complete');
 });
 
 function initializeIPTVOrchestrator() {
@@ -435,6 +430,16 @@ function downloadWorkflowLogs() {
 }
 
 function initializeStepPerformanceChart() {
+    // Check if Chart.js is available
+    if (typeof Chart === 'undefined') {
+        console.log('Chart.js not available, skipping chart initialization');
+        const chartContainer = document.getElementById('stepPerformanceChart');
+        if (chartContainer) {
+            chartContainer.parentElement.innerHTML = '<div class="text-center text-muted"><i class="fas fa-chart-bar"></i><br>Chart.js not loaded</div>';
+        }
+        return;
+    }
+
     const ctx = document.getElementById('stepPerformanceChart').getContext('2d');
     stepPerformanceChart = new Chart(ctx, {
         type: 'bar',
@@ -466,9 +471,11 @@ function initializeStepPerformanceChart() {
 
 function updateStepPerformanceChart(analytics) {
     // Update chart with real data when available
-    if (stepPerformanceChart && analytics) {
+    if (stepPerformanceChart && analytics && typeof Chart !== 'undefined') {
         // Implementation would process analytics data
         stepPerformanceChart.update();
+    } else if (typeof Chart === 'undefined') {
+        console.log('Chart.js not available, skipping chart update');
     }
 }
 </script>
