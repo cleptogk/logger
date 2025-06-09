@@ -289,7 +289,7 @@ function updateWorkflowTimeline(workflows) {
                 <div class="timeline-content">
                     <h6>${workflow.refresh_id}</h6>
                     <p class="text-muted mb-1">${formatTimestamp(workflow.start_time)}</p>
-                    <p class="mb-0">${workflow.steps.length}/8 steps completed</p>
+                    <p class="mb-0">${getCompletedStepsCount(workflow.steps)}/8 steps completed</p>
                 </div>
             </div>
         `;
@@ -315,7 +315,7 @@ function updateWorkflowsTable(workflows) {
                 <td><strong>${workflow.refresh_id}</strong></td>
                 <td>${formatTimestamp(workflow.start_time)}</td>
                 <td>${formatDuration(duration)}</td>
-                <td>${workflow.steps.length}/8</td>
+                <td>${getCompletedStepsCount(workflow.steps)}/8</td>
                 <td>${statusBadge}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-primary" onclick="viewWorkflowDetails('${workflow.refresh_id}')">
@@ -350,6 +350,11 @@ function getStatusBadge(status) {
     const statusClass = getStatusClass(status).replace('bg-', 'badge bg-');
     const statusText = status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
     return `<span class="${statusClass}">${statusText}</span>`;
+}
+
+function getCompletedStepsCount(steps) {
+    if (!steps || !Array.isArray(steps)) return 0;
+    return steps.filter(step => step.status === 'completed').length;
 }
 
 function formatTimestamp(timestamp) {

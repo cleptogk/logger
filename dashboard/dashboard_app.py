@@ -413,28 +413,80 @@ def process_workflow_data(log_results):
     for log_entry in log_results:
         metadata = log_entry.get('metadata', {})
         refresh_id = metadata.get('refresh_id')
+        message = log_entry.get('message', '')
+
+        # Extract refresh_id from message if not in metadata
+        if not refresh_id and '[Refresh-' in message:
+            import re
+            match = re.search(r'\[Refresh-(\d+)\]', message)
+            if match:
+                refresh_id = f"Refresh-{match.group(1)}"
 
         if refresh_id:
             if refresh_id not in workflows:
                 workflows[refresh_id] = {
                     'refresh_id': refresh_id,
-                    'steps': [],
+                    'steps': {},  # Use dict to avoid duplicates
                     'start_time': log_entry.get('timestamp'),
                     'status': 'in_progress'
                 }
 
+            # Extract step information from message
             step_number = metadata.get('step_number')
-            step_status = metadata.get('step_status')
-            duration = metadata.get('duration_seconds')
+            if not step_number and 'Step ' in message:
+                import re
+                match = re.search(r'Step (\d+)/8', message)
+                if match:
+                    step_number = int(match.group(1))
 
             if step_number:
-                workflows[refresh_id]['steps'].append({
-                    'step': step_number,
-                    'status': step_status,
-                    'duration': duration,
-                    'timestamp': log_entry.get('timestamp'),
-                    'message': log_entry.get('message')
-                })
+                step_status = metadata.get('step_status')
+                duration = metadata.get('duration_seconds')
+
+                # Determine status from message if not in metadata
+                if not step_status:
+                    if 'completed successfully' in message:
+                        step_status = 'completed'
+                    elif 'failed' in message.lower():
+                        step_status = 'failed'
+                    elif message.strip().endswith(':'):
+                        step_status = 'started'
+                    else:
+                        step_status = 'unknown'
+
+                # Extract duration from message if not in metadata
+                if not duration and 'in ' in message and 'seconds' in message:
+                    import re
+                    match = re.search(r'in ([\d.]+) seconds', message)
+                    if match:
+                        duration = float(match.group(1))
+
+                # Only keep the latest status for each step
+                step_key = step_number
+                if step_key not in workflows[refresh_id]['steps'] or step_status == 'completed':
+                    workflows[refresh_id]['steps'][step_key] = {
+                        'step': step_number,
+                        'status': step_status,
+                        'duration': duration,
+                        'timestamp': log_entry.get('timestamp'),
+                        'message': message
+                    }
+
+    # Convert steps dict back to list and determine final status
+    for workflow in workflows.values():
+        steps_list = list(workflow['steps'].values())
+        workflow['steps'] = sorted(steps_list, key=lambda x: x['step'])
+
+        # Determine final workflow status
+        completed_steps = [s for s in steps_list if s['status'] == 'completed']
+        failed_steps = [s for s in steps_list if s['status'] == 'failed']
+
+        if failed_steps:
+            workflow['status'] = 'failed'
+        elif len(completed_steps) >= 8:
+            workflow['status'] = 'completed'
+        else:
+            workflow['status'] = 'in_progress'
 
     return list(workflows.values())
 
