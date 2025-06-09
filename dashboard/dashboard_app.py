@@ -267,8 +267,8 @@ def get_iptv_orchestrator_data():
     try:
         # Use search endpoint instead of specialized IPTV orchestrator endpoint
         response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params={'search': 'IPTV', 'component': 'iptv-orchestrator',
-                                     'time': 'last 2 hours', 'limit': 50}, timeout=20)
+                              params={'search': 'Refresh-', 'component': 'iptv-orchestrator',
+                                     'time': 'today', 'limit': 100}, timeout=20)
 
         if response.status_code == 200:
             data = response.json()
