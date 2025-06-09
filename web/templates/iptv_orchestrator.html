@@ -200,8 +200,18 @@ let currentWorkflows = [];
 let stepPerformanceChart = null;
 
 $(document).ready(function() {
-    initializeIPTVOrchestrator();
-    startRealTimeUpdates();
+    // Wait for Chart.js to load before initializing
+    function waitForChart() {
+        if (typeof Chart !== 'undefined') {
+            console.log('Chart.js loaded, initializing IPTV orchestrator');
+            initializeIPTVOrchestrator();
+            startRealTimeUpdates();
+        } else {
+            console.log('Waiting for Chart.js to load...');
+            setTimeout(waitForChart, 100);
+        }
+    }
+    waitForChart();
 });
 
 function initializeIPTVOrchestrator() {
