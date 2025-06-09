@@ -265,15 +265,16 @@ def dashboard_health():
 def get_iptv_orchestrator_data():
     """Get IPTV orchestrator workflow data."""
     try:
-        # Get IPTV orchestrator logs with increased timeout
-        response = requests.get(f"{logging_server_url}/logger/iptv-orchestrator/ssdev",
-                              params={'time': 'last 2 hours', 'limit': 100}, timeout=30)
+        # Use search endpoint instead of specialized IPTV orchestrator endpoint
+        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
+                              params={'search': 'IPTV', 'component': 'iptv-orchestrator',
+                                     'time': 'last 2 hours', 'limit': 50}, timeout=20)
 
         if response.status_code == 200:
             data = response.json()
 
-            # Process workflow data
-            workflows = process_workflow_data(data.get('logs', []))
+            # Process workflow data from search results
+            workflows = process_workflow_data(data.get('results', []))
             analytics = data.get('analytics', {})
 
             return jsonify({
@@ -298,7 +299,7 @@ def get_workflow_details(refresh_id):
 
         if response.status_code == 200:
             data = response.json()
-            workflow_steps = process_workflow_steps(data.get('logs', []))
+            workflow_steps = process_workflow_steps(data.get('results', []))
 
             return jsonify({
                 'refresh_id': refresh_id,
