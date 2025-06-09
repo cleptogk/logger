@@ -201,8 +201,9 @@
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     
     <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/charts_config.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-    
+
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
