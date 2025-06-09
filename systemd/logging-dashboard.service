@@ -8,13 +8,13 @@ Wants=enhanced-logging-api.service
 Type=simple
 User=logserver
 Group=logserver
-WorkingDirectory=/opt/logging/logger/dashboard
+WorkingDirectory=/opt/logging
 Environment=PYTHONPATH=/opt/logging/logger
 EnvironmentFile=-/opt/logging/config/environment
 
 # Memory-optimized Gunicorn command for dashboard
 ExecStart=/opt/logging/venv/bin/gunicorn \
-    --config ../gunicorn-dashboard.conf.py \
+    --config gunicorn-dashboard.conf.py \
     --bind 0.0.0.0:8081 \
     --workers 1 \
     --worker-class eventlet \
@@ -28,7 +28,7 @@ ExecStart=/opt/logging/venv/bin/gunicorn \
     --error-logfile - \
     --log-level info \
     --proc-name logging-dashboard \
-    dashboard_app:app
+    dashboard.dashboard_app:app
 
 ExecReload=/bin/kill -HUP $MAINPID
 ExecStop=/bin/kill -TERM $MAINPID

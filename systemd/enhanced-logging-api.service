@@ -8,7 +8,7 @@ Wants=network.target
 Type=simple
 User=logserver
 Group=logserver
-WorkingDirectory=/opt/logging/logger
+WorkingDirectory=/opt/logging
 Environment=PYTHONPATH=/opt/logging/logger
 EnvironmentFile=-/opt/logging/config/environment
 
