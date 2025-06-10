@@ -519,12 +519,29 @@ def get_iptv_orchestrator_data():
 def get_workflow_details(refresh_id):
     """Get detailed workflow information for a specific refresh ID."""
     try:
+        # Use the same search pattern as the main IPTV orchestrator endpoint
+        # but filter for the specific refresh ID
         response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params={'refresh_id': refresh_id, 'limit': 100}, timeout=20)
+                              params={'search': refresh_id, 'component': 'iptv-orchestrator',
+                                     'time': 'today', 'limit': 100}, timeout=20)
 
         if response.status_code == 200:
             data = response.json()
-            workflow_steps = process_workflow_steps(data.get('results', []))
+            all_results = data.get('results', [])
+
+            # Filter results to only include logs for this specific refresh ID
+            filtered_results = []
+            for log_entry in all_results:
+                message = log_entry.get('message', '')
+                metadata = log_entry.get('metadata', {})
+
+                # Check if this log entry belongs to the requested refresh ID
+                if (refresh_id in message or
+                    metadata.get('refresh_id') == refresh_id):
+                    filtered_results.append(log_entry)
+
+            logger.info(f"Found {len(filtered_results)} log entries for {refresh_id}")
+            workflow_steps = process_workflow_steps(filtered_results)
 
             return jsonify({
                 'refresh_id': refresh_id,
@@ -533,10 +550,11 @@ def get_workflow_details(refresh_id):
                 'status': determine_workflow_status(workflow_steps)
             })
         else:
+            logger.error(f"API request failed with status {response.status_code}: {response.text}")
             return jsonify({'error': 'Failed to fetch workflow details'}), response.status_code
 
     except Exception as e:
-        logger.error(f"Failed to get workflow details: {e}")
+        logger.error(f"Failed to get workflow details for {refresh_id}: {e}")
         return jsonify({'error': str(e)}), 500
 
 # WebSocket Events
