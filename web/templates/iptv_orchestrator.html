@@ -407,20 +407,27 @@ function displayWorkflowSteps(steps) {
     steps.forEach(step => {
         const statusClass = getStatusClass(step.status);
         const stepElement = `
-            <div class="step-item mb-3">
+            <div class="step-item mb-3 border rounded p-3">
                 <div class="d-flex align-items-center">
                     <div class="step-number ${statusClass} text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
                         ${step.step}
                     </div>
                     <div class="flex-grow-1">
-                        <h6 class="mb-1">${step.message}</h6>
+                        <h6 class="mb-1">Step ${step.step}/8: ${getStepName(step.step)}</h6>
+                        <p class="mb-1 text-muted small">${step.message.length > 100 ? step.message.substring(0, 100) + '...' : step.message}</p>
                         <small class="text-muted">
-                            ${formatTimestamp(step.timestamp)} 
-                            ${step.duration ? `• ${formatDuration(step.duration)}` : ''}
+                            ${formatTimestamp(step.timestamp)}
+                            ${step.duration ? `• Duration: ${formatDuration(step.duration)}` : ''}
+                            • Level: ${step.level || 'INFO'}
                         </small>
                     </div>
-                    <div class="step-status">
-                        ${getStatusBadge(step.status)}
+                    <div class="step-actions d-flex flex-column align-items-end">
+                        <div class="mb-2">
+                            ${getStatusBadge(step.status)}
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="viewStepLogs('${step.step}', '${$('#modal-refresh-id').text()}')">
+                            <i class="fas fa-file-alt"></i> View Logs
+                        </button>
                     </div>
                 </div>
             </div>
@@ -429,10 +436,36 @@ function displayWorkflowSteps(steps) {
     });
 }
 
+function getStepName(stepNumber) {
+    const stepNames = {
+        1: 'Purging Xtream provider data',
+        2: 'Refreshing Xtream channels',
+        3: 'Refreshing Xtream EPG data',
+        4: 'Purging EPG database',
+        5: 'Refreshing EPG database',
+        6: 'Generating sports playlist',
+        7: 'Refreshing Channels DVR',
+        8: 'Processing automated recording rules'
+    };
+    return stepNames[stepNumber] || `Step ${stepNumber}`;
+}
+
+function viewStepLogs(stepNumber, refreshId) {
+    // Open logs viewer for specific step
+    const url = `/logs?search=${refreshId}&step=${stepNumber}&component=iptv-orchestrator`;
+    window.open(url, '_blank');
+}
+
 function downloadWorkflowLogs() {
     const refreshId = $('#modal-refresh-id').text();
-    // Implementation for downloading workflow logs
-    console.log('Downloading logs for:', refreshId);
+    // Create download link for all workflow logs
+    const url = `/api/dashboard/logs?host=ssdev&component=iptv-orchestrator&search=${refreshId}&format=download`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${refreshId}-logs.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 function initializeStepPerformanceChart() {
