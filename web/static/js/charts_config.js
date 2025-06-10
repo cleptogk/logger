@@ -4,10 +4,12 @@
 let ingestionChart = null;
 let sourcesChart = null;
 
-// Chart.js default configuration
-Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
-Chart.defaults.font.size = 12;
-Chart.defaults.color = '#6c757d';
+// Chart.js default configuration (only if Chart.js is available)
+if (typeof Chart !== 'undefined') {
+    Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = '#6c757d';
+}
 
 // Initialize ingestion chart
 function initializeIngestionChart() {

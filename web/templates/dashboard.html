@@ -255,18 +255,31 @@ $(document).ready(function() {
 });
 
 function initializeDashboard() {
-    // Initialize charts
-    initializeIngestionChart();
-    initializeSourcesChart();
-    
-    // Load initial data
+    // Initialize charts only if Chart.js is available
+    if (typeof Chart !== 'undefined') {
+        try {
+            initializeIngestionChart();
+            initializeSourcesChart();
+        } catch (e) {
+            console.warn('Chart initialization failed:', e.message);
+        }
+    } else {
+        console.warn('Chart.js not available - charts will be disabled');
+        // Hide chart containers if Chart.js is not available
+        $('#ingestionChart').closest('.card').hide();
+        $('#sourcesChart').closest('.card').hide();
+    }
+
+    // Load initial data (this should always work)
     loadDashboardStats();
     loadRecentActivity();
     loadActiveSources();
-    
+
     // Setup event listeners
     $('input[name="timeRange"]').change(function() {
-        updateIngestionChart($(this).val());
+        if (typeof Chart !== 'undefined') {
+            updateIngestionChart($(this).val());
+        }
     });
 }
 

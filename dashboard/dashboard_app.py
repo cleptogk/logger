@@ -448,10 +448,11 @@ def get_iptv_orchestrator_data():
             return jsonify({'error': 'Logging server not available'}), 503
 
         # Use search endpoint with multiple fallback strategies
+        # Using 'last 7 days' instead of 'today' due to log format parsing issues
         search_params = {
             'search': 'Refresh-',
             'component': 'iptv-orchestrator',
-            'time': 'today',
+            'time': 'last 7 days',
             'limit': 100
         }
 
