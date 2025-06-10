@@ -799,8 +799,8 @@ def main():
         logger.info("🛑 Centralized Logging Dashboard stopped")
 
 # Initialize dashboard when module is imported (for gunicorn)
-with app.app_context():
-    initialize_dashboard()
+# Call initialization without app context since it doesn't need Flask request context
+initialize_dashboard()
 
 if __name__ == '__main__':
     main()
