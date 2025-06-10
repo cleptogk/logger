@@ -421,6 +421,9 @@ function loadActiveSources() {
 
             Promise.all(promises).then(sourceData => {
                 console.log('Active sources data loaded:', sourceData);
+
+                // Build all rows first, then update table once to prevent flickering
+                let allRows = '';
                 sourceData.forEach(source => {
                     const logs = source.logs;
                     const errorCount = logs.filter(log => ['ERROR', 'WARN'].includes(log.level)).length;
@@ -433,7 +436,7 @@ function loadActiveSources() {
                         '<span class="badge bg-success">Active</span>' :
                         '<span class="badge bg-secondary">Inactive</span>';
 
-                    const row = `
+                    allRows += `
                         <tr>
                             <td><strong>${source.name}</strong></td>
                             <td>${statusBadge}</td>
@@ -447,13 +450,16 @@ function loadActiveSources() {
                             </td>
                         </tr>
                     `;
-                    tbody.append(row);
                 });
+
+                // Update table once with all rows to prevent flickering
+                tbody.html(allRows);
             }).catch(error => {
                 console.error('Failed to load source details, showing basic list:', error);
                 // Fallback: show basic source list without detailed stats
+                let fallbackRows = '';
                 activeSources.forEach(source => {
-                    const row = `
+                    fallbackRows += `
                         <tr>
                             <td><strong>${source}</strong></td>
                             <td><span class="badge bg-secondary">Unknown</span></td>
@@ -467,8 +473,9 @@ function loadActiveSources() {
                             </td>
                         </tr>
                     `;
-                    tbody.append(row);
                 });
+                // Update table once with all fallback rows
+                tbody.html(fallbackRows);
             });
         })
         .fail(function() {
