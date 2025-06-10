@@ -300,6 +300,7 @@ def search_dashboard_logs():
         pattern = request.args.get('pattern', '')
         level = request.args.get('level', '')
         refresh_id = request.args.get('refresh_id', '')
+        component = request.args.get('component', '')
         time_filter = request.args.get('time', 'last 1 hour')
         limit = request.args.get('limit', 100)
 
@@ -321,9 +322,6 @@ def search_dashboard_logs():
             params['level'] = level
         if refresh_id:
             params['search'] = refresh_id  # Use search parameter for refresh_id
-
-        # Add component parameter if provided
-        component = request.args.get('component', '')
         if component:
             params['component'] = component
 
