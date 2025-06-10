@@ -304,9 +304,11 @@ def search_dashboard_logs():
         time_filter = request.args.get('time', 'last 1 hour')
         limit = request.args.get('limit', 100)
 
-        # Allow searches with just component and time parameters
+        # Allow searches with just host, component, and time parameters
+        # For host-only searches, we'll search for all logs from that host
         if not query and not pattern and not refresh_id and not component:
-            return jsonify({'error': 'At least one search parameter (q, pattern, refresh_id, or component) is required'}), 400
+            # If no specific search terms, search for all logs from the host
+            query = '*'  # Use wildcard to get all logs
 
         # Build enhanced search request
         params = {
