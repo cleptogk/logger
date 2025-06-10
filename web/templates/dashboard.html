@@ -403,7 +403,7 @@ function loadActiveSources() {
 
             // Get log counts for each source using the search API
             const promises = activeSources.map(source =>
-                $.get(`/api/dashboard/search?host=${source}&time=last%207%20days&limit=100`)
+                $.get(`/api/dashboard/search?host=${source}&time=today&limit=100`)
                     .then(response => ({
                         name: source,
                         logs: response.results || [],

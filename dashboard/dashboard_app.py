@@ -447,12 +447,11 @@ def get_iptv_orchestrator_data():
             logger.error("Logging server URL not initialized")
             return jsonify({'error': 'Logging server not available'}), 503
 
-        # Use search endpoint with multiple fallback strategies
-        # Using 'last 7 days' instead of 'today' due to log format parsing issues
+        # Use search endpoint with current day data
         search_params = {
             'search': 'Refresh-',
             'component': 'iptv-orchestrator',
-            'time': 'last 7 days',
+            'time': 'today',
             'limit': 100
         }
 
