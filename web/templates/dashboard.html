@@ -388,12 +388,12 @@ function loadActiveSources() {
                 return;
             }
 
-            // Get log counts for each source
+            // Get log counts for each source using the search API
             const promises = activeSources.map(source =>
-                $.get(`/api/logs?source=${source}&limit=100`)
+                $.get(`/api/dashboard/search?host=${source}&time=today&limit=100`)
                     .then(response => ({
                         name: source,
-                        logs: response.logs || [],
+                        logs: response.results || [],
                         total: response.total || 0
                     }))
                     .catch(() => ({
@@ -451,7 +451,7 @@ function refreshActivity() {
 }
 
 function viewSourceLogs(source) {
-    window.location.href = `/logs?source=${source}`;
+    window.location.href = `/logs?host=${source}&time=today`;
 }
 
 function formatNumber(num) {

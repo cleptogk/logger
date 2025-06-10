@@ -303,8 +303,9 @@ def search_dashboard_logs():
         time_filter = request.args.get('time', 'last 1 hour')
         limit = request.args.get('limit', 100)
 
-        if not query and not pattern and not refresh_id:
-            return jsonify({'error': 'At least one search parameter (q, pattern, or refresh_id) is required'}), 400
+        # Allow searches with just component and time parameters
+        if not query and not pattern and not refresh_id and not component:
+            return jsonify({'error': 'At least one search parameter (q, pattern, refresh_id, or component) is required'}), 400
 
         # Build enhanced search request
         params = {
@@ -319,7 +320,12 @@ def search_dashboard_logs():
         if level:
             params['level'] = level
         if refresh_id:
-            params['refresh_id'] = refresh_id
+            params['search'] = refresh_id  # Use search parameter for refresh_id
+
+        # Add component parameter if provided
+        component = request.args.get('component', '')
+        if component:
+            params['component'] = component
 
         response = requests.get(f"{logging_server_url}/logger/search/{host}", params=params, timeout=20)
 

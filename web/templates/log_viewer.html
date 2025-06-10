@@ -245,7 +245,8 @@ $(document).ready(function() {
 function initializeLogViewer() {
     // Load initial data if there are URL parameters
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('search') || urlParams.has('refresh_id')) {
+    if (urlParams.has('search') || urlParams.has('refresh_id') || urlParams.has('host') ||
+        urlParams.has('component') || urlParams.has('step')) {
         populateFormFromURL(urlParams);
         performSearch();
     }
@@ -284,6 +285,19 @@ function populateFormFromURL(urlParams) {
     }
     if (urlParams.has('level')) {
         $('#levelSelect').val(urlParams.get('level'));
+    }
+    if (urlParams.has('component')) {
+        $('#componentSelect').val(urlParams.get('component'));
+    }
+    if (urlParams.has('step')) {
+        // For step-specific searches, add step info to search query
+        const stepNumber = urlParams.get('step');
+        const currentSearch = $('#searchQuery').val();
+        const stepSearch = currentSearch ? `${currentSearch} Step ${stepNumber}` : `Step ${stepNumber}`;
+        $('#searchQuery').val(stepSearch);
+    }
+    if (urlParams.has('time')) {
+        $('#timeRange').val(urlParams.get('time'));
     }
 }
 
