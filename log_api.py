@@ -29,7 +29,7 @@ logs_storage = []
 log_files_cache = {}
 MAX_CACHE_SIZE = 1000  # Limit cache entries
 MAX_LOG_STORAGE = 5000  # Limit stored logs
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB max file size to read
+MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB max file size to read (increased for large log files)
 
 # Enhanced component patterns for detailed tracking
 COMPONENT_PATTERNS = {
@@ -334,10 +334,10 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
             try:
                 # Read file in chunks to avoid memory issues
                 with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                    # Read only last 10000 lines to limit memory usage
+                    # Read only last 50000 lines to limit memory usage (increased for large files)
                     lines = []
                     for i, line in enumerate(f):
-                        if i > 10000:  # Skip if too many lines
+                        if i > 50000:  # Skip if too many lines
                             break
                         lines.append(line)
 
