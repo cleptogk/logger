@@ -14,13 +14,33 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from flask import Flask, render_template, jsonify, request
-from flask_socketio import SocketIO, emit
-import requests
-
 # Use basic logging instead of missing dependencies
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+from flask import Flask, render_template, jsonify, request
+import requests
+
+# Import SocketIO with graceful fallback
+try:
+    from flask_socketio import SocketIO, emit
+    SOCKETIO_AVAILABLE = True
+except ImportError:
+    logger.warning("⚠️ flask_socketio not available, real-time features disabled")
+    SOCKETIO_AVAILABLE = False
+    # Create mock SocketIO class for graceful degradation
+    class MockSocketIO:
+        def __init__(self, app, **kwargs):
+            self.app = app
+        def emit(self, *args, **kwargs):
+            pass
+        def on(self, event):
+            def decorator(f):
+                return f
+            return decorator
+    SocketIO = MockSocketIO
+    def emit(*args, **kwargs):
+        pass
 
 # Initialize Flask app with memory optimizations
 app = Flask(__name__,
@@ -43,20 +63,89 @@ socketio = SocketIO(app, cors_allowed_origins="*",
 redis_client = None
 logging_server_url = None
 
+# Initialize Redis client with graceful fallback
+try:
+    # Try to import Redis client utilities
+    import sys
+    sys.path.append("/opt/logging")
+    from server.utils.redis_client import RedisClient
+    redis_client = RedisClient()
+    if redis_client.ping():
+        logger.info("✅ Redis client connected successfully")
+    else:
+        redis_client = None
+        logger.warning("⚠️ Redis ping failed, using file-based storage")
+except ImportError as e:
+    redis_client = None
+    logger.warning(f"⚠️ Redis client not available, using file-based storage: {e}")
+except Exception as e:
+    redis_client = None
+    logger.warning(f"⚠️ Redis unavailable, using file-based storage: {e}")
+
+def validate_dependencies():
+    """Validate all required dependencies and configurations."""
+    issues = []
+
+    # Check Flask
+    try:
+        from flask import __version__ as flask_version
+        logger.info(f"✅ Flask {flask_version} available")
+    except ImportError:
+        issues.append("Flask not available")
+
+    # Check requests
+    try:
+        import requests
+        logger.info(f"✅ Requests {requests.__version__} available")
+    except ImportError:
+        issues.append("Requests library not available")
+
+    # Check SocketIO (optional)
+    if SOCKETIO_AVAILABLE:
+        logger.info("✅ Flask-SocketIO available - real-time features enabled")
+    else:
+        logger.warning("⚠️ Flask-SocketIO not available - using mock implementation")
+
+    # Check Redis (optional)
+    if redis_client:
+        logger.info("✅ Redis client available")
+    else:
+        logger.info("ℹ️ Redis client not available - using file-based storage")
+
+    return issues
+
 def initialize_dashboard():
-    """Initialize dashboard components."""
+    """Initialize dashboard components with comprehensive validation."""
     global redis_client, logging_server_url
 
-    logger.info("Initializing logging dashboard...")
+    logger.info("🚀 Initializing logging dashboard...")
 
     try:
-        # Skip Redis for MVP - not critical for basic functionality
-        redis_client = None
-        logger.info("⚠️ Redis client skipped for MVP")
+        # Validate dependencies first
+        dependency_issues = validate_dependencies()
+        if dependency_issues:
+            logger.warning(f"⚠️ Dependency issues found: {', '.join(dependency_issues)}")
 
-        # Set enhanced logging API URL
-        logging_server_url = f"http://127.0.0.1:{os.environ.get('LOGGING_API_PORT', 8080)}"
-        logger.info(f"✅ Enhanced Logging API URL: {logging_server_url}")
+        # Set enhanced logging API URL with validation
+        api_port = os.environ.get('LOGGING_API_PORT', '8080')
+        logging_server_url = f"http://127.0.0.1:{api_port}"
+        logger.info(f"🔗 Enhanced Logging API URL: {logging_server_url}")
+
+        # Test API connectivity
+        try:
+            test_response = requests.get(f"{logging_server_url}/health", timeout=3)
+            if test_response.status_code == 200:
+                logger.info("✅ Logging API connectivity verified")
+            else:
+                logger.warning(f"⚠️ Logging API returned status {test_response.status_code}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not verify logging API connectivity: {e}")
+
+        # Initialize SocketIO if available
+        if SOCKETIO_AVAILABLE:
+            logger.info("✅ Real-time features enabled via SocketIO")
+        else:
+            logger.info("ℹ️ Real-time features disabled - using polling fallback")
 
         logger.info("🎉 Dashboard initialized successfully!")
         return True
@@ -245,57 +334,173 @@ def search_dashboard_logs():
 
 @app.route('/api/dashboard/health')
 def dashboard_health():
-    """Dashboard health check."""
+    """Comprehensive dashboard health check."""
     try:
-        # Check logging server health
-        response = requests.get(f"{logging_server_url}/health", timeout=5)
-        server_health = response.json() if response.status_code == 200 else {'status': 'error'}
-        
-        # Redis not required for MVP
-        dashboard_health = {
-            'status': 'healthy' if server_health.get('status') == 'healthy' else 'degraded',
-            'components': {
-                'redis': 'disabled',  # Redis disabled for MVP
-                'logging_server': server_health.get('status', 'error'),
-                'socketio': 'ok'
-            },
-            'server_health': server_health,
-            'timestamp': datetime.now().isoformat()
+        health_status = {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'components': {},
+            'dependencies': {},
+            'api_connectivity': {},
+            'system_info': {}
         }
-        
-        return jsonify(dashboard_health)
+
+        # Check logging server health
+        try:
+            if logging_server_url:
+                response = requests.get(f"{logging_server_url}/health", timeout=5)
+                if response.status_code == 200:
+                    server_health = response.json()
+                    health_status['components']['logging_server'] = 'healthy'
+                    health_status['api_connectivity']['logging_api'] = server_health
+                else:
+                    health_status['components']['logging_server'] = 'degraded'
+                    health_status['status'] = 'degraded'
+            else:
+                health_status['components']['logging_server'] = 'not_configured'
+                health_status['status'] = 'degraded'
+        except Exception as e:
+            health_status['components']['logging_server'] = 'error'
+            health_status['api_connectivity']['logging_api_error'] = str(e)
+            health_status['status'] = 'degraded'
+
+        # Check dependencies
+        health_status['dependencies']['flask_socketio'] = 'available' if SOCKETIO_AVAILABLE else 'missing'
+        health_status['dependencies']['redis_client'] = 'available' if redis_client else 'disabled'
+        health_status['dependencies']['requests'] = 'available'
+
+        # Check SocketIO status
+        health_status['components']['socketio'] = 'available' if SOCKETIO_AVAILABLE else 'mock'
+
+        # System information
+        health_status['system_info']['python_path'] = sys.path[:3]  # First 3 entries
+        health_status['system_info']['working_directory'] = os.getcwd()
+        health_status['system_info']['logging_server_url'] = logging_server_url
+
+        # Test IPTV orchestrator endpoint
+        try:
+            if logging_server_url:
+                test_response = requests.get(f"{logging_server_url}/logger/search/ssdev",
+                                           params={'search': 'test', 'limit': 1}, timeout=3)
+                health_status['api_connectivity']['iptv_search'] = 'available' if test_response.status_code == 200 else 'error'
+        except Exception as e:
+            health_status['api_connectivity']['iptv_search'] = f'error: {str(e)}'
+
+        return jsonify(health_status)
 
     except Exception as e:
         logger.error(f"Dashboard health check failed: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/dashboard/system-status')
+def system_status():
+    """Detailed system status for debugging."""
+    try:
+        import platform
+        import psutil
+
+        status = {
+            'platform': {
+                'system': platform.system(),
+                'python_version': platform.python_version(),
+                'architecture': platform.architecture()[0]
+            },
+            'memory': {
+                'available_mb': psutil.virtual_memory().available // 1024 // 1024,
+                'percent_used': psutil.virtual_memory().percent
+            },
+            'environment': {
+                'logging_api_port': os.environ.get('LOGGING_API_PORT', '8080'),
+                'secret_key_set': bool(os.environ.get('SECRET_KEY')),
+                'flask_env': os.environ.get('FLASK_ENV', 'production')
+            },
+            'flask_config': {
+                'max_content_length': app.config.get('MAX_CONTENT_LENGTH'),
+                'send_file_max_age': app.config.get('SEND_FILE_MAX_AGE_DEFAULT'),
+                'json_sort_keys': app.config.get('JSON_SORT_KEYS')
+            }
+        }
+
+        return jsonify(status)
+
+    except ImportError:
+        return jsonify({'error': 'psutil not available for system monitoring'}), 503
+    except Exception as e:
+        logger.error(f"System status check failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/dashboard/iptv-orchestrator')
 def get_iptv_orchestrator_data():
-    """Get IPTV orchestrator workflow data."""
+    """Get IPTV orchestrator workflow data with enhanced error handling."""
     try:
-        # Use search endpoint instead of specialized IPTV orchestrator endpoint
+        if not logging_server_url:
+            logger.error("Logging server URL not initialized")
+            return jsonify({'error': 'Logging server not available'}), 503
+
+        # Use search endpoint with multiple fallback strategies
+        search_params = {
+            'search': 'Refresh-',
+            'component': 'iptv-orchestrator',
+            'time': 'today',
+            'limit': 100
+        }
+
+        logger.info(f"Fetching IPTV orchestrator data from {logging_server_url}/logger/search/ssdev")
         response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params={'search': 'Refresh-', 'component': 'iptv-orchestrator',
-                                     'time': 'today', 'limit': 100}, timeout=10)
+                              params=search_params, timeout=15)
 
         if response.status_code == 200:
             data = response.json()
+            logger.info(f"Successfully fetched {len(data.get('results', []))} log entries")
 
             # Process workflow data from search results
             workflows = process_workflow_data(data.get('results', []))
             analytics = data.get('analytics', {})
 
-            return jsonify({
+            result = {
                 'workflows': workflows,
                 'analytics': analytics,
                 'total_workflows': len(workflows),
-                'success_rate': calculate_success_rate(workflows)
-            })
-        else:
-            return jsonify({'error': 'Failed to fetch IPTV orchestrator data'}), response.status_code
+                'success_rate': calculate_success_rate(workflows),
+                'last_updated': datetime.now().isoformat(),
+                'data_source': 'enhanced_api'
+            }
 
+            logger.info(f"Processed {len(workflows)} workflows with {result['success_rate']:.1f}% success rate")
+            return jsonify(result)
+
+        elif response.status_code == 404:
+            logger.warning("IPTV orchestrator endpoint not found, trying fallback")
+            # Fallback to general search
+            fallback_response = requests.get(f"{logging_server_url}/logger/search/ssdev",
+                                           params={'search': 'iptv-orchestrator', 'time': 'today', 'limit': 50},
+                                           timeout=10)
+            if fallback_response.status_code == 200:
+                data = fallback_response.json()
+                workflows = process_workflow_data(data.get('results', []))
+                return jsonify({
+                    'workflows': workflows,
+                    'total_workflows': len(workflows),
+                    'success_rate': calculate_success_rate(workflows),
+                    'analytics': {'note': 'Using fallback search'},
+                    'data_source': 'fallback_search'
+                })
+
+        logger.error(f"API request failed with status {response.status_code}: {response.text}")
+        return jsonify({'error': f'API request failed: {response.status_code}'}), response.status_code
+
+    except requests.exceptions.Timeout:
+        logger.error("Timeout while fetching IPTV orchestrator data")
+        return jsonify({'error': 'Request timeout - logging server may be overloaded'}), 504
+    except requests.exceptions.ConnectionError:
+        logger.error("Connection error while fetching IPTV orchestrator data")
+        return jsonify({'error': 'Cannot connect to logging server'}), 503
     except Exception as e:
-        logger.error(f"Failed to get IPTV orchestrator data: {e}")
+        logger.error(f"Unexpected error getting IPTV orchestrator data: {e}")
         # Return empty data structure instead of error to prevent UI from breaking
         return jsonify({
             'workflows': [],
@@ -304,8 +509,10 @@ def get_iptv_orchestrator_data():
             'analytics': {
                 'component_distribution': {},
                 'level_distribution': {},
-                'refresh_distribution': {}
-            }
+                'refresh_distribution': {},
+                'error': str(e)
+            },
+            'data_source': 'error_fallback'
         })
 
 @app.route('/api/dashboard/workflow/<refresh_id>')
