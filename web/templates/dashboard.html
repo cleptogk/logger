@@ -403,27 +403,31 @@ function loadActiveSources() {
 
             // Get log counts for each source using the search API
             const promises = activeSources.map(source =>
-                $.get(`/api/dashboard/search?host=${source}&time=today&limit=100`)
+                $.get(`/api/dashboard/search?host=${source}&time=last%207%20days&limit=100`)
                     .then(response => ({
                         name: source,
                         logs: response.results || [],
                         total: response.total || 0
                     }))
-                    .catch(() => ({
-                        name: source,
-                        logs: [],
-                        total: 0
-                    }))
+                    .catch(error => {
+                        console.warn(`Failed to load logs for source ${source}:`, error);
+                        return {
+                            name: source,
+                            logs: [],
+                            total: 0
+                        };
+                    })
             );
 
             Promise.all(promises).then(sourceData => {
+                console.log('Active sources data loaded:', sourceData);
                 sourceData.forEach(source => {
                     const logs = source.logs;
                     const errorCount = logs.filter(log => ['ERROR', 'WARN'].includes(log.level)).length;
                     const errorRate = logs.length > 0 ? (errorCount / logs.length) * 100 : 0;
                     const lastLog = logs[0];
                     const lastSeen = lastLog ? formatTimeAgo(lastLog.timestamp) : 'No recent logs';
-                    const hasFiles = filesInfo[source] && filesInfo[source].length > 0;
+                    const hasFiles = filesInfo[source.name] && filesInfo[source.name].length > 0;
 
                     const statusBadge = hasFiles && logs.length > 0 ?
                         '<span class="badge bg-success">Active</span>' :
@@ -431,13 +435,33 @@ function loadActiveSources() {
 
                     const row = `
                         <tr>
-                            <td><strong>${source}</strong></td>
+                            <td><strong>${source.name}</strong></td>
                             <td>${statusBadge}</td>
                             <td>${lastSeen}</td>
                             <td>${formatNumber(logs.length)}</td>
                             <td class="${errorRate > 5 ? 'text-danger' : errorRate > 1 ? 'text-warning' : 'text-success'}">${formatPercentage(errorRate)}</td>
                             <td>
                                 <button class="btn btn-sm btn-outline-primary" onclick="viewSourceLogs('${source.name}')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.append(row);
+                });
+            }).catch(error => {
+                console.error('Failed to load source details, showing basic list:', error);
+                // Fallback: show basic source list without detailed stats
+                activeSources.forEach(source => {
+                    const row = `
+                        <tr>
+                            <td><strong>${source}</strong></td>
+                            <td><span class="badge bg-secondary">Unknown</span></td>
+                            <td>Loading...</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewSourceLogs('${source}')">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </td>
