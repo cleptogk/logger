@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gunicorn configuration for memory-optimized logging services.
+Gunicorn configuration for logging services.
 """
 
 import multiprocessing
@@ -10,15 +10,12 @@ import os
 bind = f"0.0.0.0:{os.environ.get('PORT', 8080)}"
 backlog = 2048
 
-# Worker processes - limit to reduce memory usage
-workers = min(2, multiprocessing.cpu_count())  # Max 2 workers
-worker_class = "sync"  # Use sync workers instead of async to reduce memory
-worker_connections = 100  # Limit connections per worker
-max_requests = 500  # Restart workers after 500 requests to prevent memory leaks
-max_requests_jitter = 50  # Add jitter to prevent all workers restarting at once
-
-# Memory limits
-worker_memory_limit = 512 * 1024 * 1024  # 512MB per worker
+# Worker processes
+workers = min(4, multiprocessing.cpu_count())  # Scale with CPU cores
+worker_class = "sync"
+worker_connections = 1000  # Increased connections per worker
+max_requests = 2000  # Restart workers after more requests
+max_requests_jitter = 200  # Add jitter to prevent all workers restarting at once
 worker_tmp_dir = "/tmp"
 
 # Timeouts - reduce to prevent hanging requests
@@ -40,10 +37,10 @@ limit_request_line = 4096
 limit_request_fields = 100
 limit_request_field_size = 8192
 
-# Preload app to save memory
+# Preload app for performance
 preload_app = True
 
-# Worker lifecycle hooks for memory management
+# Worker lifecycle hooks
 def when_ready(server):
     """Called just after the server is started."""
     server.log.info("Enhanced Logging API server is ready. PID: %s", os.getpid())

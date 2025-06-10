@@ -1,5 +1,5 @@
 [Unit]
-Description=Enhanced Logging API Server (Memory Optimized)
+Description=Enhanced Logging API Server
 Documentation=https://github.com/cleptogk/logger
 After=network.target
 Wants=network.target
@@ -12,7 +12,7 @@ WorkingDirectory=/opt/logging
 Environment=PYTHONPATH=/opt/logging/logger
 EnvironmentFile=-/opt/logging/config/environment
 
-# Memory-optimized Gunicorn command
+# Gunicorn command
 ExecStart=/opt/logging/venv/bin/gunicorn \
     --config gunicorn.conf.py \
     --bind 0.0.0.0:8080 \
@@ -49,13 +49,9 @@ ProtectControlGroups=true
 RestrictRealtime=true
 RestrictNamespaces=true
 
-# Resource limits - CRITICAL FOR MEMORY CONTROL
-LimitNOFILE=4096
-LimitNPROC=512
-MemoryMax=512M
-MemoryHigh=400M
-CPUQuota=100%
-TasksMax=256
+# Resource limits
+LimitNOFILE=8192
+LimitNPROC=1024
 
 # Logging
 StandardOutput=journal

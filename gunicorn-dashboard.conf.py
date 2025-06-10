@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gunicorn configuration for memory-optimized logging dashboard.
+Gunicorn configuration for logging dashboard.
 """
 
 import multiprocessing
@@ -10,15 +10,12 @@ import os
 bind = f"0.0.0.0:{os.environ.get('DASHBOARD_PORT', 8081)}"
 backlog = 1024
 
-# Worker processes - single worker for dashboard to reduce memory
-workers = 1  # Single worker for dashboard
+# Worker processes
+workers = 2  # Multiple workers for better performance
 worker_class = "eventlet"  # Use eventlet for SocketIO support
-worker_connections = 50  # Limit connections
-max_requests = 200  # Restart worker after 200 requests
-max_requests_jitter = 20
-
-# Memory limits
-worker_memory_limit = 256 * 1024 * 1024  # 256MB per worker
+worker_connections = 200  # Increased connections
+max_requests = 1000  # Restart worker after more requests
+max_requests_jitter = 100
 worker_tmp_dir = "/tmp"
 
 # Timeouts
@@ -40,7 +37,7 @@ limit_request_line = 4096
 limit_request_fields = 100
 limit_request_field_size = 8192
 
-# Preload app to save memory
+# Preload app for performance
 preload_app = True
 
 # Worker lifecycle hooks

@@ -1,5 +1,5 @@
 [Unit]
-Description=Logging Dashboard (Memory Optimized)
+Description=Logging Dashboard
 Documentation=https://github.com/cleptogk/logger
 After=network.target enhanced-logging-api.service
 Wants=enhanced-logging-api.service
@@ -12,7 +12,7 @@ WorkingDirectory=/opt/logging
 Environment=PYTHONPATH=/opt/logging/logger
 EnvironmentFile=-/opt/logging/config/environment
 
-# Memory-optimized Gunicorn command for dashboard
+# Gunicorn command for dashboard
 ExecStart=/opt/logging/venv/bin/gunicorn \
     --config gunicorn-dashboard.conf.py \
     --bind 0.0.0.0:8081 \
@@ -49,13 +49,9 @@ ProtectControlGroups=true
 RestrictRealtime=true
 RestrictNamespaces=true
 
-# Resource limits - CRITICAL FOR MEMORY CONTROL
-LimitNOFILE=2048
-LimitNPROC=256
-MemoryMax=256M
-MemoryHigh=200M
-CPUQuota=50%
-TasksMax=128
+# Resource limits
+LimitNOFILE=4096
+LimitNPROC=512
 
 # Logging
 StandardOutput=journal

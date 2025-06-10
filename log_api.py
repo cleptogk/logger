@@ -19,17 +19,17 @@ sys.path.insert(0, str(project_root))
 
 app = Flask(__name__)
 
-# Configure Flask for memory efficiency
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max request size
+# Configure Flask
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # 64MB max request size
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 300  # 5 minutes cache
 app.config['JSON_SORT_KEYS'] = False  # Don't sort JSON keys to save CPU
 
-# Simple in-memory storage for testing with memory limits
+# Simple in-memory storage for testing
 logs_storage = []
 log_files_cache = {}
-MAX_CACHE_SIZE = 1000  # Limit cache entries
-MAX_LOG_STORAGE = 5000  # Limit stored logs
-MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB max file size to read (increased for large log files)
+MAX_CACHE_SIZE = 10000  # Increased cache entries
+MAX_LOG_STORAGE = 50000  # Increased stored logs
+MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB max file size to read
 
 # Enhanced component patterns for detailed tracking
 COMPONENT_PATTERNS = {
@@ -318,8 +318,8 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
     if not log_dir.exists():
         return logs
 
-    # Limit results to prevent memory issues
-    limit = min(limit, 1000)  # Hard cap at 1000 results
+    # Limit results for performance
+    limit = min(limit, 10000)  # Hard cap at 10000 results
 
     # Determine which application to look for
     app_filter = application.lower() if application and application != 'all' else None
@@ -332,12 +332,12 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                 continue
 
             try:
-                # Read file in chunks to avoid memory issues
+                # Read file in chunks for performance
                 with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                    # Read only last 50000 lines to limit memory usage (increased for large files)
+                    # Read more lines for better data coverage
                     lines = []
                     for i, line in enumerate(f):
-                        if i > 50000:  # Skip if too many lines
+                        if i > 200000:  # Skip if too many lines (increased limit)
                             break
                         lines.append(line)
 
@@ -468,8 +468,8 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
 
                     logs.append(log_entry)
 
-                    # Break early if we have enough logs to prevent memory issues
-                    if len(logs) >= limit * 2:  # Get a bit more for sorting
+                    # Break early if we have enough logs for performance
+                    if len(logs) >= limit * 5:  # Get more for better sorting
                         break
 
             except Exception as e:
@@ -479,7 +479,7 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
         if len(logs) >= limit * 3:
             break
 
-    # Sort by timestamp (newest first) - limit sorting to prevent memory issues
+    # Sort by timestamp (newest first)
     logs.sort(key=lambda x: x['timestamp'], reverse=True)
 
     # Apply pagination
