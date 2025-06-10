@@ -725,23 +725,55 @@ def calculate_success_rate(workflows):
 
 def process_workflow_steps(log_results):
     """Process log results to extract detailed step information."""
-    steps = []
+    steps = {}  # Use dict to avoid duplicates and keep latest status
 
     for log_entry in log_results:
         metadata = log_entry.get('metadata', {})
+        message = log_entry.get('message', '')
+
+        # Get step number from metadata or parse from message
         step_number = metadata.get('step_number')
+        if not step_number and 'Step ' in message:
+            import re
+            match = re.search(r'Step (\d+)/8', message)
+            if match:
+                step_number = int(match.group(1))
 
         if step_number:
-            steps.append({
-                'step': step_number,
-                'status': metadata.get('step_status', 'unknown'),
-                'duration': metadata.get('duration_seconds'),
-                'timestamp': log_entry.get('timestamp'),
-                'message': log_entry.get('message'),
-                'level': log_entry.get('level')
-            })
+            # Get step status from metadata or parse from message
+            step_status = metadata.get('step_status')
+            if not step_status:
+                if 'completed successfully' in message:
+                    step_status = 'completed'
+                elif 'failed' in message.lower():
+                    step_status = 'failed'
+                elif message.strip().endswith(':'):
+                    step_status = 'started'
+                else:
+                    step_status = 'unknown'
 
-    return sorted(steps, key=lambda x: x['step'])
+            # Get duration from metadata or parse from message
+            duration = metadata.get('duration_seconds')
+            if not duration and 'in ' in message and 'seconds' in message:
+                import re
+                match = re.search(r'in ([\d.]+) seconds', message)
+                if match:
+                    duration = float(match.group(1))
+
+            # Only keep the latest status for each step (prefer completed status)
+            step_key = step_number
+            if step_key not in steps or step_status == 'completed':
+                steps[step_key] = {
+                    'step': step_number,
+                    'status': step_status,
+                    'duration': duration,
+                    'timestamp': log_entry.get('timestamp'),
+                    'message': message,
+                    'level': log_entry.get('level')
+                }
+
+    # Convert to sorted list
+    return sorted(steps.values(), key=lambda x: x['step'])
 
 def calculate_total_duration(workflow_steps):
     """Calculate total workflow duration."""
