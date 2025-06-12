@@ -633,13 +633,13 @@ def analyze_recording_statistics(logs):
 def get_error_analysis():
     """Get top errors and their frequencies."""
     try:
+        import re
         # Use host-based endpoint for better performance
         search_params = {
             'application': 'sports-scheduler',
             'component': 'iptv-orchestrator',
             'time': 'last 7 days',
-            'log': 'errors',  # Filter for errors only
-            'limit': 50
+            'limit': 100  # Get more logs to analyze for error patterns
         }
 
         # Use the correct log API endpoint (port 8080)
@@ -653,25 +653,40 @@ def get_error_analysis():
         data = response.json()
         logs = data.get('logs', [])
 
-        # Count error frequencies
+        # Count error frequencies by looking for error patterns in all logs
         error_counts = {}
         for log in logs:
             message = log.get('message', '')
+            metadata = log.get('metadata', {})
 
-            # Categorize common errors
-            if 'not mapped to dvr' in message.lower():
-                error_counts['Channel not mapped to DVR'] = error_counts.get('Channel not mapped to DVR', 0) + 1
-            elif 'epg data missing' in message.lower():
-                error_counts['EPG data missing'] = error_counts.get('EPG data missing', 0) + 1
-            elif 'api timeout' in message.lower():
-                error_counts['API timeout'] = error_counts.get('API timeout', 0) + 1
-            elif 'connection failed' in message.lower():
-                error_counts['Connection failed'] = error_counts.get('Connection failed', 0) + 1
-            elif 'authentication' in message.lower():
-                error_counts['Authentication error'] = error_counts.get('Authentication error', 0) + 1
-            else:
-                # Generic error category
-                error_counts['Other errors'] = error_counts.get('Other errors', 0) + 1
+            # Look for failed steps or error patterns
+            if (log.get('level') == 'ERROR' or
+                metadata.get('step_status') == 'failed' or
+                'failed' in message.lower() or
+                'error' in message.lower() or
+                'timeout' in message.lower() or
+                'connection' in message.lower()):
+
+                # Categorize IPTV orchestrator specific errors
+                if 'step' in message.lower() and 'failed' in message.lower():
+                    step_match = re.search(r'step (\d+)', message.lower())
+                    if step_match:
+                        step_num = step_match.group(1)
+                        error_counts[f'Step {step_num} Failed'] = error_counts.get(f'Step {step_num} Failed', 0) + 1
+                    else:
+                        error_counts['Step Failure'] = error_counts.get('Step Failure', 0) + 1
+                elif 'timeout' in message.lower():
+                    error_counts['Timeout Error'] = error_counts.get('Timeout Error', 0) + 1
+                elif 'connection' in message.lower():
+                    error_counts['Connection Error'] = error_counts.get('Connection Error', 0) + 1
+                elif 'api' in message.lower() and ('failed' in message.lower() or 'error' in message.lower()):
+                    error_counts['API Error'] = error_counts.get('API Error', 0) + 1
+                elif 'epg' in message.lower() and ('failed' in message.lower() or 'error' in message.lower()):
+                    error_counts['EPG Error'] = error_counts.get('EPG Error', 0) + 1
+                elif 'channel' in message.lower() and ('failed' in message.lower() or 'error' in message.lower()):
+                    error_counts['Channel Error'] = error_counts.get('Channel Error', 0) + 1
+                else:
+                    error_counts['Other Errors'] = error_counts.get('Other Errors', 0) + 1
 
         # Sort by frequency and get top 10
         top_errors = sorted(error_counts.items(), key=lambda x: x[1], reverse=True)[:10]
