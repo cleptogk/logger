@@ -484,8 +484,7 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
     if not log_dir.exists():
         return logs
 
-    # Limit results for performance
-    limit = min(limit, 10000)  # Hard cap at 10000 results
+    # Removed artificial hard cap - allow unlimited results for complete log coverage
 
     # Determine which application to look for
     app_filter = application.lower() if application and application != 'all' else None
@@ -510,20 +509,13 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
 
     for log_file in log_files:
         if log_file.is_file():
-            # Skip files that are too large
-            if log_file.stat().st_size > MAX_FILE_SIZE:
-                print(f"Skipping large file {log_file} ({log_file.stat().st_size} bytes)")
-                continue
+            # Removed file size limit - read ALL log files regardless of size
 
             try:
                 # Read file in chunks for performance
                 with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                    # Read more lines for better data coverage
-                    lines = []
-                    for i, line in enumerate(f):
-                        if i > 200000:  # Skip if too many lines (increased limit)
-                            break
-                        lines.append(line)
+                    # Read ALL lines for complete data coverage
+                    lines = f.readlines()
 
                 for line in lines:
                     line = line.strip()
@@ -677,16 +669,12 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
 
                     logs.append(log_entry)
 
-                    # Break early if we have enough logs for performance
-                    if len(logs) >= limit * 5:  # Get more for better sorting
-                        break
+                    # Removed artificial limit - read ALL logs from each component file
 
             except Exception as e:
                 print(f"Error reading {log_file}: {e}")
 
-        # Break if we have enough logs from multiple files
-        if len(logs) >= limit * 3:
-            break
+        # Removed artificial limit - read ALL component files for complete coverage
 
     # Sort by timestamp (newest first)
     logs.sort(key=lambda x: x['timestamp'], reverse=True)
