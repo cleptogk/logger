@@ -511,15 +511,18 @@ def get_iptv_orchestrator_statistics():
 def get_period_statistics(time_filter):
     """Get statistics for a specific time period."""
     try:
-        # Search for automated recording logs
+        # Use the more efficient host-based endpoint for better performance
         search_params = {
-            'search': 'automated-recording',
+            'application': 'sports-scheduler',
+            'component': 'automated-recording',
             'time': time_filter,
-            'limit': 500
+            'limit': 50  # Reduced limit for better performance
         }
 
-        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params=search_params, timeout=15)
+        # Use the correct log API endpoint (port 8080)
+        log_api_url = logging_server_url.replace(':8081', ':8080')
+        response = requests.get(f"{log_api_url}/logger/host=ssdev",
+                              params=search_params, timeout=30)
 
         if response.status_code != 200:
             return {'runs': {}, 'recordings': {}}
@@ -617,16 +620,19 @@ def analyze_recording_statistics(logs):
 def get_error_analysis():
     """Get top errors and their frequencies."""
     try:
-        # Search for error logs in the past week
+        # Use host-based endpoint for better performance
         search_params = {
-            'search': 'error',
+            'application': 'sports-scheduler',
             'component': 'automated-recording',
             'time': 'last 7 days',
-            'limit': 200
+            'log': 'errors',  # Filter for errors only
+            'limit': 50
         }
 
-        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params=search_params, timeout=15)
+        # Use the correct log API endpoint (port 8080)
+        log_api_url = logging_server_url.replace(':8081', ':8080')
+        response = requests.get(f"{log_api_url}/logger/host=ssdev",
+                              params=search_params, timeout=30)
 
         if response.status_code != 200:
             return {'top_errors': [], 'error_trends': {}}
@@ -677,8 +683,10 @@ def get_recent_failures():
             'limit': 50
         }
 
-        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params=search_params, timeout=15)
+        # Use the correct log API endpoint (port 8080)
+        log_api_url = logging_server_url.replace(':8081', ':8080')
+        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+                              params=search_params, timeout=30)
 
         if response.status_code != 200:
             return []
@@ -716,8 +724,10 @@ def get_missed_recordings_stats():
             'limit': 100
         }
 
-        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params=search_params, timeout=15)
+        # Use the correct log API endpoint (port 8080)
+        log_api_url = logging_server_url.replace(':8081', ':8080')
+        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+                              params=search_params, timeout=30)
 
         if response.status_code != 200:
             return {'total_missed': 0, 'reasons': {}}
@@ -764,8 +774,10 @@ def get_current_workflows():
             'limit': 100
         }
 
-        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                              params=search_params, timeout=15)
+        # Use the correct log API endpoint (port 8080)
+        log_api_url = logging_server_url.replace(':8081', ':8080')
+        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+                              params=search_params, timeout=30)
 
         if response.status_code == 200:
             data = response.json()
@@ -806,9 +818,11 @@ def get_workflow_details(refresh_id):
     try:
         # Use the same search pattern as the main IPTV orchestrator endpoint
         # but filter for the specific refresh ID
-        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
+        # Use the correct log API endpoint (port 8080)
+        log_api_url = logging_server_url.replace(':8081', ':8080')
+        response = requests.get(f"{log_api_url}/logger/search/ssdev",
                               params={'search': refresh_id, 'component': 'iptv-orchestrator',
-                                     'time': 'today', 'limit': 100}, timeout=20)
+                                     'time': 'today', 'limit': 100}, timeout=30)
 
         if response.status_code == 200:
             data = response.json()
