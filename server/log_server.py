@@ -53,8 +53,8 @@ def initialize_components():
         redis_client = RedisClient()
         logger.info("✅ Redis client initialized")
         
-        # Initialize metrics exporter
-        metrics_exporter = MetricsExporter()
+        # Initialize metrics exporter with Redis client for historical data
+        metrics_exporter = MetricsExporter(redis_client)
         logger.info("✅ Metrics exporter initialized")
         
         # Initialize log processor
@@ -236,6 +236,37 @@ def get_stats():
 
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/historical')
+def get_historical_data():
+    """Get historical metrics data for dashboard."""
+    try:
+        historical_data = metrics_exporter.get_historical_data()
+        return jsonify(historical_data)
+
+    except Exception as e:
+        logger.error(f"Failed to get historical data: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/trends/<metric_name>')
+def get_metric_trend(metric_name):
+    """Get trend data for a specific metric."""
+    try:
+        hours = int(request.args.get('hours', 24))
+
+        if not metrics_exporter.historical_metrics:
+            return jsonify({'error': 'Historical metrics not available'}), 503
+
+        trend_data = metrics_exporter.historical_metrics.get_trend_data(metric_name, hours)
+        return jsonify({
+            'metric': metric_name,
+            'hours': hours,
+            'data': trend_data
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to get trend data for {metric_name}: {e}")
         return jsonify({'error': str(e)}), 500
 
 # MVP API Endpoints for Troubleshooting

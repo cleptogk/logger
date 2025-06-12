@@ -5,15 +5,26 @@ Handles Prometheus metrics collection and export for the logging server.
 
 import time
 import psutil
+from datetime import datetime
 from typing import Dict, Any, Optional
 from loguru import logger
 from prometheus_client import Counter, Histogram, Gauge, Info, CollectorRegistry, REGISTRY
 
 class MetricsExporter:
-    """Prometheus metrics exporter for logging server."""
-    
-    def __init__(self):
-        """Initialize metrics collectors."""
+    """Prometheus metrics exporter for logging server with historical data preservation."""
+
+    def __init__(self, redis_client=None):
+        """Initialize metrics collectors and historical storage."""
+        self.redis_client = redis_client
+        self.historical_metrics = None
+
+        # Initialize historical metrics if Redis is available
+        if redis_client:
+            from .historical_metrics import HistoricalMetrics
+            self.historical_metrics = HistoricalMetrics(redis_client)
+
+        # Track last snapshot time for hourly recording
+        self._last_snapshot_hour = None
 
         try:
             # Log ingestion metrics
@@ -210,7 +221,7 @@ class MetricsExporter:
     
     def get_summary_stats(self) -> Dict[str, Any]:
         """Get summary statistics."""
-        return {
+        stats = {
             'uptime_seconds': self.get_uptime(),
             'total_logs_processed': self._total_logs,
             'ingestion_rate': self.get_ingestion_rate(),
@@ -219,3 +230,62 @@ class MetricsExporter:
             'error_count': self._error_count,
             'disk_usage': self.get_disk_usage()
         }
+
+        # Record hourly snapshot if needed
+        self._maybe_record_hourly_snapshot(stats)
+
+        return stats
+
+    def _maybe_record_hourly_snapshot(self, stats: Dict[str, Any]):
+        """Record hourly snapshot if we've crossed into a new hour."""
+        try:
+            if not self.historical_metrics:
+                return
+
+            current_hour = datetime.now().strftime('%Y-%m-%d %H')
+
+            if self._last_snapshot_hour != current_hour:
+                # Add additional metrics for historical tracking
+                enhanced_stats = stats.copy()
+                enhanced_stats.update({
+                    'total_logs_today': self._total_logs,
+                    'active_sources': [],  # Will be populated by log processor
+                    'timestamp': datetime.now().isoformat()
+                })
+
+                self.historical_metrics.record_hourly_snapshot(enhanced_stats)
+                self._last_snapshot_hour = current_hour
+
+        except Exception as e:
+            logger.error(f"Failed to record hourly snapshot: {e}")
+
+    def get_historical_data(self) -> Dict[str, Any]:
+        """Get historical metrics data for dashboard."""
+        try:
+            if not self.historical_metrics:
+                return {'error': 'Historical metrics not available'}
+
+            return self.historical_metrics.get_dashboard_historical_data()
+
+        except Exception as e:
+            logger.error(f"Failed to get historical data: {e}")
+            return {'error': str(e)}
+
+    def record_daily_summary(self, date: str = None):
+        """Record daily summary (typically called by scheduler)."""
+        try:
+            if not self.historical_metrics:
+                return False
+
+            if not date:
+                date = datetime.now().strftime('%Y-%m-%d')
+
+            summary = self.historical_metrics.calculate_daily_summary(date)
+            if summary:
+                return self.historical_metrics.record_daily_summary(date, summary)
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to record daily summary: {e}")
+            return False
