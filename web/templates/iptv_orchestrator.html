@@ -144,6 +144,9 @@
                                     <div>
                                         <h6 class="card-title">Total Workflows Today</h6>
                                         <h3 class="mb-0" id="total-workflows">-</h3>
+                                        <small id="last-run-time" class="opacity-75">Last run: -</small>
+                                        <br>
+                                        <small id="last-run-status" class="opacity-75">Status: -</small>
                                     </div>
                                     <div class="align-self-center">
                                         <i class="fas fa-cogs fa-2x opacity-75"></i>
@@ -342,16 +345,26 @@
         </div>
     </div>
     
-    <!-- Step Performance Chart -->
+    <!-- Step Performance Timings -->
     <div class="col-lg-4 mb-4">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0">
-                    <i class="fas fa-chart-bar me-2"></i>Step Performance
+                    <i class="fas fa-stopwatch me-2"></i>Latest Workflow Timings
                 </h5>
             </div>
             <div class="card-body">
-                <canvas id="stepPerformanceChart" height="300"></canvas>
+                <div id="step-timings-container">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Loading step timings...
+                    </div>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between align-items-center">
+                    <strong>Total Duration:</strong>
+                    <span id="total-workflow-duration" class="badge bg-info">-</span>
+                </div>
             </div>
         </div>
     </div>
@@ -443,12 +456,9 @@ $(document).ready(function() {
 });
 
 function initializeIPTVOrchestrator() {
-    // Initialize step performance chart
-    initializeStepPerformanceChart();
-    
     // Load initial data
     loadWorkflowData();
-    
+
     // Setup search
     $('#workflow-search').on('keypress', function(e) {
         if (e.which === 13) {
@@ -476,12 +486,13 @@ function loadWorkflowData() {
             updateWorkflowStats(data);
             updateWorkflowTimeline(data.workflows);
             updateWorkflowsTable(data.workflows);
-            updateStepPerformanceChart(data.analytics);
+            updateStepTimings(data.workflows);
 
             // Update new statistics components
             updatePeriodStatistics(data);
             updateErrorAnalysis(data.error_analysis);
             updateRecentFailures(data.recent_failures);
+            updateLatestRecordingInfo(data.latest_recording);
             updateLastUpdated();
         })
         .fail(function(xhr, status, error) {
@@ -493,14 +504,17 @@ function loadWorkflowData() {
 function updateWorkflowStats(data) {
     $('#total-workflows').text(data.total_workflows || 0);
     $('#success-rate').text((data.success_rate || 0).toFixed(1));
-    
+
     // Calculate average duration
     const avgDuration = calculateAverageDuration(data.workflows || []);
     $('#avg-duration').text(avgDuration.toFixed(1));
-    
+
     // Count active workflows
     const activeCount = (data.workflows || []).filter(w => w.status === 'in_progress').length;
     $('#active-workflows').text(activeCount);
+
+    // Update last run information
+    updateLastRunInfo(data.workflows || []);
 }
 
 function calculateAverageDuration(workflows) {
@@ -710,54 +724,112 @@ function downloadWorkflowLogs() {
     document.body.removeChild(link);
 }
 
-function initializeStepPerformanceChart() {
-    // Check if Chart.js is available
-    if (typeof Chart === 'undefined') {
-        console.log('Chart.js not available, skipping chart initialization');
-        const chartContainer = document.getElementById('stepPerformanceChart');
-        if (chartContainer) {
-            chartContainer.parentElement.innerHTML = '<div class="text-center text-muted"><i class="fas fa-chart-bar"></i><br>Chart.js not loaded</div>';
-        }
+function updateLastRunInfo(workflows) {
+    if (!workflows.length) {
+        $('#last-run-time').text('Last run: Never');
+        $('#last-run-status').text('Status: -');
         return;
     }
 
-    const ctx = document.getElementById('stepPerformanceChart').getContext('2d');
-    stepPerformanceChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: ['Step 1', 'Step 2', 'Step 3', 'Step 4', 'Step 5', 'Step 6', 'Step 7', 'Step 8'],
-            datasets: [{
-                label: 'Average Duration (seconds)',
-                data: [0, 0, 0, 0, 0, 0, 0, 0],
-                backgroundColor: 'rgba(54, 162, 235, 0.8)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Duration (seconds)'
-                    }
-                }
-            }
-        }
-    });
+    // Sort workflows by start time to get the most recent
+    const sortedWorkflows = workflows.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+    const lastWorkflow = sortedWorkflows[0];
+
+    const lastRunTime = formatTimestamp(lastWorkflow.start_time);
+    const status = lastWorkflow.status === 'completed' ? 'Success' :
+                  lastWorkflow.status === 'failed' ? 'Failed' : 'In Progress';
+
+    $('#last-run-time').text(`Last run: ${lastRunTime}`);
+    $('#last-run-status').text(`Status: ${status}`);
 }
 
-function updateStepPerformanceChart(analytics) {
-    // Update chart with real data when available
-    if (stepPerformanceChart && analytics && typeof Chart !== 'undefined') {
-        // Implementation would process analytics data
-        stepPerformanceChart.update();
-    } else if (typeof Chart === 'undefined') {
-        console.log('Chart.js not available, skipping chart update');
+function updateLatestRecordingInfo(latestRecording) {
+    if (!latestRecording || latestRecording.name === 'No recordings found') {
+        // Don't show recording info if none available
+        return;
     }
+
+    // Add recording info to the first stat box if there's space
+    // For now, we'll add it to the success rate box
+    const recordingTime = latestRecording.time !== 'Unknown' ?
+        formatTimestamp(latestRecording.time) : 'Unknown';
+    const recordingName = latestRecording.name.length > 30 ?
+        latestRecording.name.substring(0, 30) + '...' : latestRecording.name;
+
+    // Update success rate box to include latest recording info
+    const successRateCard = $('#success-rate').closest('.card-body');
+    const existingRecordingInfo = successRateCard.find('.recording-info');
+
+    if (existingRecordingInfo.length === 0) {
+        successRateCard.append(`
+            <div class="recording-info mt-2">
+                <small class="opacity-75">Latest: ${recordingName}</small>
+                <br>
+                <small class="opacity-75">${recordingTime}</small>
+            </div>
+        `);
+    } else {
+        existingRecordingInfo.html(`
+            <small class="opacity-75">Latest: ${recordingName}</small>
+            <br>
+            <small class="opacity-75">${recordingTime}</small>
+        `);
+    }
+}
+
+function updateStepTimings(workflows) {
+    const container = $('#step-timings-container');
+
+    if (!workflows.length) {
+        container.html('<div class="text-center text-muted">No workflow data available</div>');
+        $('#total-workflow-duration').text('-');
+        return;
+    }
+
+    // Get the most recent completed workflow
+    const completedWorkflows = workflows.filter(w => w.status === 'completed');
+    if (!completedWorkflows.length) {
+        container.html('<div class="text-center text-muted">No completed workflows found</div>');
+        $('#total-workflow-duration').text('-');
+        return;
+    }
+
+    const latestWorkflow = completedWorkflows.sort((a, b) => new Date(b.start_time) - new Date(a.start_time))[0];
+    const steps = latestWorkflow.steps || [];
+
+    // Calculate total duration
+    const totalDuration = steps.reduce((sum, step) => sum + (step.duration || 0), 0);
+    $('#total-workflow-duration').text(formatDuration(totalDuration));
+
+    // Display step timings
+    container.empty();
+
+    if (!steps.length) {
+        container.html('<div class="text-center text-muted">No step data available</div>');
+        return;
+    }
+
+    steps.forEach(step => {
+        const stepName = getStepName(step.step);
+        const duration = step.duration || 0;
+        const statusClass = step.status === 'completed' ? 'text-success' :
+                           step.status === 'failed' ? 'text-danger' : 'text-warning';
+
+        const stepElement = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                    <small class="text-muted">Step ${step.step}:</small>
+                    <div style="font-size: 0.9rem;">${stepName}</div>
+                </div>
+                <div class="text-end">
+                    <span class="badge bg-light text-dark">${formatDuration(duration)}</span>
+                    <br>
+                    <small class="${statusClass}">${step.status}</small>
+                </div>
+            </div>
+        `;
+        container.append(stepElement);
+    });
 }
 
 // New Statistics Functions

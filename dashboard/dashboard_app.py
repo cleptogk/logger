@@ -495,6 +495,9 @@ def get_iptv_orchestrator_statistics():
         stats['total_workflows'] = len(current_workflows)
         stats['success_rate'] = calculate_success_rate(current_workflows)
 
+        # Get latest recording information
+        stats['latest_recording'] = get_latest_recording_info()
+
         return stats
 
     except Exception as e:
@@ -821,6 +824,82 @@ def get_current_workflows():
     except Exception as e:
         logger.error(f"Failed to get current workflows: {e}")
         return []
+
+def get_latest_recording_info():
+    """Get information about the latest recording from IPTV orchestrator logs."""
+    try:
+        # Search for recent recording-related logs
+        search_params = {
+            'search': 'recording',
+            'component': 'iptv-orchestrator',
+            'time': 'last 7 days',
+            'limit': 50
+        }
+
+        # Use the correct log API endpoint (port 8080)
+        log_api_url = logging_server_url.replace(':8081', ':8080')
+        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+                              params=search_params, timeout=30)
+
+        if response.status_code != 200:
+            return {'name': 'Unknown', 'time': 'Unknown', 'status': 'Unknown'}
+
+        data = response.json()
+        logs = data.get('results', [])
+
+        # Look for the most recent recording information
+        latest_recording = None
+        for log in logs:
+            message = log.get('message', '')
+            timestamp = log.get('timestamp', '')
+            metadata = log.get('metadata', {})
+
+            # Look for recording success/failure patterns
+            if ('scheduled' in message.lower() or 'recording' in message.lower()) and timestamp:
+                # Extract recording name from message
+                recording_name = extract_recording_name(message)
+                status = 'Success' if 'success' in message.lower() or 'scheduled' in message.lower() else 'Failed'
+
+                if not latest_recording or timestamp > latest_recording['time']:
+                    latest_recording = {
+                        'name': recording_name,
+                        'time': timestamp,
+                        'status': status
+                    }
+
+        return latest_recording or {'name': 'No recordings found', 'time': 'Unknown', 'status': 'Unknown'}
+
+    except Exception as e:
+        logger.error(f"Failed to get latest recording info: {e}")
+        return {'name': 'Error', 'time': 'Unknown', 'status': 'Error'}
+
+def extract_recording_name(message):
+    """Extract recording name from log message."""
+    try:
+        import re
+
+        # Look for common patterns in recording messages
+        patterns = [
+            r'recording[:\s]+([^,\n]+)',
+            r'scheduled[:\s]+([^,\n]+)',
+            r'event[:\s]+([^,\n]+)',
+            r'"([^"]+)"',  # Quoted strings
+            r"'([^']+)'"   # Single quoted strings
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                name = match.group(1).strip()
+                # Clean up the name
+                if len(name) > 3 and not name.lower().startswith(('step', 'refresh', 'error')):
+                    return name[:50]  # Limit length
+
+        return 'Unknown Recording'
+
+    except Exception as e:
+        logger.error(f"Failed to extract recording name: {e}")
+        return 'Unknown Recording'
 
     except requests.exceptions.Timeout:
         logger.error("Timeout while fetching IPTV orchestrator data")
