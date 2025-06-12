@@ -422,18 +422,13 @@ function loadActiveSources() {
             // The stats API already includes recent_logs and files_info with source information
             const promises = activeSources.map(source => {
                 // Count logs for this source from the recent_logs data
-                const sourceLogs = (window.lastStatsData?.analytics?.recent_logs || [])
+                const sourceLogs = (data.analytics?.recent_logs || [])
                     .filter(log => log.host === source);
-
-                // Get file info for this source
-                const sourceFiles = window.lastStatsData?.files_info?.log_files?.[source] || [];
-                const totalFiles = sourceFiles.length;
 
                 return Promise.resolve({
                     name: source,
                     logs: sourceLogs,
-                    total: sourceLogs.length,
-                    files: totalFiles
+                    total: sourceLogs.length
                 });
             });
 
