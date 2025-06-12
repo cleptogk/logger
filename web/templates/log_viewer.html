@@ -295,6 +295,9 @@ function populateFormFromURL(urlParams) {
     }
     if (urlParams.has('time')) {
         $('#timeRange').val(urlParams.get('time'));
+    } else if (urlParams.has('search') || urlParams.has('refresh_id') || urlParams.has('step')) {
+        // For workflow-specific searches, default to 'today' instead of 'last 1 hour'
+        $('#timeRange').val('today');
     }
 }
 
