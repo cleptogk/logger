@@ -310,6 +310,8 @@ function startRealTimeUpdates() {
 function loadDashboardStats() {
     $.get('/api/dashboard/stats')
         .done(function(data) {
+            // Store data globally for use by other functions
+            window.lastStatsData = data;
             updateStatsCards(data);
             updateHealthStatus(data);
         })
@@ -416,23 +418,24 @@ function loadActiveSources() {
                 return;
             }
 
-            // Get log counts for each source using the working logs API on port 8080
-            const promises = activeSources.map(source =>
-                $.get(`http://logger.johnsons.lcl:8080/api/logs?source=${source}&limit=100`)
-                    .then(response => ({
-                        name: source,
-                        logs: response.logs || [],
-                        total: response.total || 0
-                    }))
-                    .catch(error => {
-                        console.warn(`Failed to load logs for source ${source}:`, error);
-                        return {
-                            name: source,
-                            logs: [],
-                            total: 0
-                        };
-                    })
-            );
+            // Use the data already available from the stats API instead of making separate calls
+            // The stats API already includes recent_logs and files_info with source information
+            const promises = activeSources.map(source => {
+                // Count logs for this source from the recent_logs data
+                const sourceLogs = (window.lastStatsData?.analytics?.recent_logs || [])
+                    .filter(log => log.host === source);
+
+                // Get file info for this source
+                const sourceFiles = window.lastStatsData?.files_info?.log_files?.[source] || [];
+                const totalFiles = sourceFiles.length;
+
+                return Promise.resolve({
+                    name: source,
+                    logs: sourceLogs,
+                    total: sourceLogs.length,
+                    files: totalFiles
+                });
+            });
 
             Promise.all(promises).then(sourceData => {
                 console.log('Active sources data loaded:', sourceData);
