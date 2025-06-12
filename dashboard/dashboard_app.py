@@ -295,18 +295,19 @@ def search_dashboard_logs():
     """Search logs using enhanced logging API."""
     try:
         # Get search parameters
-        query = request.args.get('q', '')
+        query = request.args.get('q', '') or request.args.get('search', '')  # Support both 'q' and 'search' parameters
         host = request.args.get('host', 'ssdev')
         pattern = request.args.get('pattern', '')
         level = request.args.get('level', '')
         refresh_id = request.args.get('refresh_id', '')
         component = request.args.get('component', '')
+        step = request.args.get('step', '')  # Add step parameter support
         time_filter = request.args.get('time', 'last 1 hour')
         limit = request.args.get('limit', 100)
 
         # Allow searches with just host, component, and time parameters
         # For host-only searches, we'll search for all logs from that host
-        if not query and not pattern and not refresh_id and not component:
+        if not query and not pattern and not refresh_id and not component and not step:
             # If no specific search terms, search for all logs from the host
             query = '*'  # Use wildcard to get all logs
 
@@ -326,6 +327,8 @@ def search_dashboard_logs():
             params['search'] = refresh_id  # Use search parameter for refresh_id
         if component:
             params['component'] = component
+        if step:
+            params['step'] = step
 
         response = requests.get(f"{logging_server_url}/logger/search/{host}", params=params, timeout=20)
 
