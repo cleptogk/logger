@@ -248,11 +248,18 @@
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/charts_config.js') }}"></script>
 <script>
-// Dashboard settings
-const settings = {
-    autoRefresh: true,
-    refreshInterval: 30  // seconds (increased from 5 to reduce refresh frequency)
-};
+// Override dashboard settings from external dashboard.js
+if (typeof settings !== 'undefined') {
+    // Update existing settings object
+    settings.autoRefresh = true;
+    settings.refreshInterval = 30;  // seconds (increased from 5 to reduce refresh frequency)
+} else {
+    // Fallback if settings doesn't exist
+    window.settings = {
+        autoRefresh: true,
+        refreshInterval: 30
+    };
+}
 
 // Dashboard-specific JavaScript
 $(document).ready(function() {
