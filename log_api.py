@@ -515,10 +515,6 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                     if component and component != 'all' and component != detected_component:
                         continue
 
-                    # Apply step filtering
-                    if step and step != 'all' and step != detected_step:
-                        continue
-
                     # Determine log level
                     level = 'INFO'
                     line_lower = line.lower()
@@ -583,6 +579,12 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                         metadata['step_status'] = 'started'
                     elif 'starting.*workflow' in line.lower():
                         metadata['step_status'] = 'workflow_started'
+
+                    # Apply step filtering using extracted step number
+                    if step and step != 'all':
+                        step_number = metadata.get('step_number')
+                        if step_number is None or str(step_number) != str(step):
+                            continue
 
                     log_entry = {
                         'timestamp': log_timestamp.isoformat(),
