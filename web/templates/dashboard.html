@@ -416,9 +416,9 @@ function loadActiveSources() {
                 return;
             }
 
-            // Get log counts for each source using the working logs API
+            // Get log counts for each source using the working logs API on port 8080
             const promises = activeSources.map(source =>
-                $.get(`/api/logs?source=${source}&limit=100`)
+                $.get(`http://logger.johnsons.lcl:8080/api/logs?source=${source}&limit=100`)
                     .then(response => ({
                         name: source,
                         logs: response.logs || [],
