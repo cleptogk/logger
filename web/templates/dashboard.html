@@ -312,10 +312,12 @@ function loadDashboardStats() {
 }
 
 function updateStatsCards(data) {
-    $('#total-logs').text(formatNumber(data.total_logs_today || 0));
-    $('#ingestion-rate').text(formatNumber(data.ingestion_rate || 0));
-    $('#error-rate').text(formatPercentage(data.error_rate || 0));
-    $('#disk-usage').text(formatPercentage(data.disk_usage || 0));
+    // Use api_stats data structure from the API response
+    const stats = data.api_stats || {};
+    $('#total-logs').text(formatNumber(stats.total_logs_today || 0));
+    $('#ingestion-rate').text(formatNumber(stats.ingestion_rate || 0));
+    $('#error-rate').text(formatPercentage(stats.error_rate || 0));
+    $('#disk-usage').text(formatPercentage(stats.disk_usage || 0));
 }
 
 function updateHealthStatus(data) {
@@ -550,6 +552,11 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function showError(message) {
+    console.error('Dashboard Error:', message);
+    // You could also show a toast notification or alert here if needed
 }
 </script>
 {% endblock %}
