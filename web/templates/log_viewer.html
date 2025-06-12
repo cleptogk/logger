@@ -290,11 +290,8 @@ function populateFormFromURL(urlParams) {
         $('#componentSelect').val(urlParams.get('component'));
     }
     if (urlParams.has('step')) {
-        // For step-specific searches, add step info to search query
-        const stepNumber = urlParams.get('step');
-        const currentSearch = $('#searchQuery').val();
-        const stepSearch = currentSearch ? `${currentSearch} Step ${stepNumber}` : `Step ${stepNumber}`;
-        $('#searchQuery').val(stepSearch);
+        // Store step number for later use in performSearch
+        window.urlStepNumber = urlParams.get('step');
     }
     if (urlParams.has('time')) {
         $('#timeRange').val(urlParams.get('time'));
@@ -303,7 +300,7 @@ function populateFormFromURL(urlParams) {
 
 function performSearch() {
     let searchQuery = $('#searchQuery').val();
-    let stepNumber = '';
+    let stepNumber = window.urlStepNumber || '';
 
     // Extract step number from search query if present (e.g., "Refresh-45 Step 8")
     const stepMatch = searchQuery.match(/(.+?)\s+Step\s+(\d+)$/i);
@@ -325,7 +322,7 @@ function performSearch() {
         offset: (currentPage - 1) * 100
     };
 
-    // Add step parameter if extracted
+    // Add step parameter if available
     if (stepNumber) {
         formData.step = stepNumber;
     }
