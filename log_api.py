@@ -9,6 +9,8 @@ import sys
 import gc
 import re
 import pytz
+import json
+import time
 from pathlib import Path
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
@@ -30,6 +32,133 @@ log_files_cache = {}
 MAX_CACHE_SIZE = 10000  # Increased cache entries
 MAX_LOG_STORAGE = 50000  # Increased stored logs
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB max file size to read
+
+# Redis client for historical metrics (optional)
+redis_client = None
+historical_metrics = None
+
+try:
+    import redis
+    redis_client = redis.Redis(
+        host=os.environ.get('REDIS_HOST', '127.0.0.1'),
+        port=int(os.environ.get('REDIS_PORT', 6379)),
+        db=int(os.environ.get('REDIS_DB', 0)),
+        decode_responses=True,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+        retry_on_timeout=True
+    )
+    # Test connection
+    redis_client.ping()
+    print("✅ Connected to Redis for historical metrics")
+
+    # Initialize historical metrics storage
+    class SimpleHistoricalMetrics:
+        def __init__(self, redis_client):
+            self.redis = redis_client
+            self.hourly_key = "historical_metrics:hourly"
+            self.daily_key = "historical_metrics:daily"
+            self._last_snapshot_hour = None
+
+        def record_hourly_snapshot(self, metrics):
+            try:
+                timestamp = datetime.now().isoformat()
+                snapshot = {
+                    'timestamp': timestamp,
+                    'hour': datetime.now().strftime('%Y-%m-%d %H:00'),
+                    'metrics': metrics
+                }
+                self.redis.lpush(self.hourly_key, json.dumps(snapshot))
+                self.redis.ltrim(self.hourly_key, 0, 719)  # Keep last 720 hours (30 days)
+                return True
+            except Exception as e:
+                print(f"Failed to record hourly snapshot: {e}")
+                return False
+
+        def get_hourly_metrics(self, hours=24):
+            try:
+                snapshots_raw = self.redis.lrange(self.hourly_key, 0, hours - 1)
+                return [json.loads(s) for s in snapshots_raw]
+            except Exception as e:
+                print(f"Failed to get hourly metrics: {e}")
+                return []
+
+        def get_dashboard_historical_data(self):
+            try:
+                hourly_data = self.get_hourly_metrics(24)
+
+                # Calculate trends
+                ingestion_trend = []
+                error_trend = []
+                disk_trend = []
+
+                for snapshot in reversed(hourly_data):  # Oldest first for trend
+                    metrics = snapshot['metrics']
+                    ingestion_trend.append({
+                        'timestamp': snapshot['timestamp'],
+                        'hour': snapshot['hour'],
+                        'value': metrics.get('ingestion_rate', 0)
+                    })
+                    error_trend.append({
+                        'timestamp': snapshot['timestamp'],
+                        'hour': snapshot['hour'],
+                        'value': metrics.get('error_rate', 0)
+                    })
+                    disk_trend.append({
+                        'timestamp': snapshot['timestamp'],
+                        'hour': snapshot['hour'],
+                        'value': metrics.get('disk_usage', 0)
+                    })
+
+                # Calculate averages
+                if hourly_data:
+                    avg_24h_ingestion = sum(h['metrics'].get('ingestion_rate', 0) for h in hourly_data) / len(hourly_data)
+                    avg_24h_error_rate = sum(h['metrics'].get('error_rate', 0) for h in hourly_data) / len(hourly_data)
+                else:
+                    avg_24h_ingestion = 0
+                    avg_24h_error_rate = 0
+
+                return {
+                    'current_metrics': hourly_data[0]['metrics'] if hourly_data else {},
+                    'hourly_snapshots': hourly_data[:12],  # Last 12 hours for display
+                    'trends': {
+                        'ingestion_rate': ingestion_trend,
+                        'error_rate': error_trend,
+                        'disk_usage': disk_trend
+                    },
+                    'averages_24h': {
+                        'ingestion_rate': round(avg_24h_ingestion, 2),
+                        'error_rate': round(avg_24h_error_rate, 2)
+                    },
+                    'data_availability': {
+                        'hourly_points': len(hourly_data),
+                        'oldest_hourly': hourly_data[-1]['timestamp'] if hourly_data else None,
+                        'newest_hourly': hourly_data[0]['timestamp'] if hourly_data else None
+                    }
+                }
+            except Exception as e:
+                print(f"Failed to get dashboard historical data: {e}")
+                return {}
+
+        def maybe_record_hourly_snapshot(self, stats):
+            try:
+                current_hour = datetime.now().strftime('%Y-%m-%d %H')
+                if self._last_snapshot_hour != current_hour:
+                    enhanced_stats = stats.copy()
+                    enhanced_stats.update({
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    self.record_hourly_snapshot(enhanced_stats)
+                    self._last_snapshot_hour = current_hour
+            except Exception as e:
+                print(f"Failed to record hourly snapshot: {e}")
+
+    historical_metrics = SimpleHistoricalMetrics(redis_client)
+
+except Exception as e:
+    print(f"Redis not available for historical metrics: {e}")
+    redis_client = None
+    historical_metrics = None
 
 # Enhanced component patterns for detailed tracking
 COMPONENT_PATTERNS = {
@@ -972,6 +1101,10 @@ def get_stats():
             'timestamp': datetime.now().isoformat()
         }
 
+        # Record historical snapshot if Redis is available
+        if historical_metrics:
+            historical_metrics.maybe_record_hourly_snapshot(stats)
+
         return jsonify(stats)
 
     except Exception as e:
@@ -1085,8 +1218,52 @@ def get_total_disk_usage(files):
     except:
         return 0
 
+# Historical Metrics API Endpoints
+@app.route('/api/historical')
+def get_historical_data():
+    """Get historical metrics data for dashboard."""
+    try:
+        if not historical_metrics:
+            return jsonify({'error': 'Historical metrics not available - Redis not connected'}), 503
+
+        historical_data = historical_metrics.get_dashboard_historical_data()
+        return jsonify(historical_data)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/trends/<metric_name>')
+def get_metric_trend(metric_name):
+    """Get trend data for a specific metric."""
+    try:
+        if not historical_metrics:
+            return jsonify({'error': 'Historical metrics not available - Redis not connected'}), 503
+
+        hours = int(request.args.get('hours', 24))
+
+        # Get hourly data and extract the specific metric
+        hourly_data = historical_metrics.get_hourly_metrics(hours)
+
+        trend_data = []
+        for snapshot in reversed(hourly_data):  # Oldest first for trend
+            if metric_name in snapshot['metrics']:
+                trend_data.append({
+                    'timestamp': snapshot['timestamp'],
+                    'hour': snapshot['hour'],
+                    'value': snapshot['metrics'][metric_name]
+                })
+
+        return jsonify({
+            'metric': metric_name,
+            'hours': hours,
+            'data': trend_data
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
-    print("🚀 Starting MVP Logging API Server")
+    print("🚀 Starting Enhanced Logging API Server with Historical Metrics")
     print("=" * 50)
     
     host = os.environ.get('BIND_ADDRESS', '0.0.0.0')
@@ -1095,6 +1272,9 @@ if __name__ == '__main__':
     print(f"🌐 Starting Flask server on {host}:{port}")
     print("📋 Available endpoints:")
     print("  - /health")
+    print("  - /api/stats (with historical metrics)")
+    print("  - /api/historical (historical dashboard data)")
+    print("  - /api/trends/<metric> (trend data)")
     print("  - /logger/host=<host>?application=<app>&component=<comp>&log=<type>")
     print("  - /logger/search/<host>?search=<query>&pattern=<regex>&level=<levels>")
     print("  - /logger/troubleshoot/<host>/<application>")
