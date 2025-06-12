@@ -511,10 +511,10 @@ def get_iptv_orchestrator_statistics():
 def get_period_statistics(time_filter):
     """Get statistics for a specific time period."""
     try:
-        # Use the more efficient host-based endpoint for better performance
+        # Use the correct component for IPTV orchestrator statistics
         search_params = {
             'application': 'sports-scheduler',
-            'component': 'automated-recording',
+            'component': 'iptv-orchestrator',
             'time': time_filter,
             'limit': 50  # Reduced limit for better performance
         }
@@ -551,21 +551,31 @@ def analyze_orchestrator_runs(logs):
         successful_runs = 0
         failed_runs = 0
 
-        # Look for workflow completion indicators
+        # Look for workflow completion indicators in IPTV orchestrator logs
+        refresh_ids = set()
+        completed_refreshes = set()
+        failed_refreshes = set()
+
         for log in logs:
-            message = log.get('message', '').lower()
+            message = log.get('message', '')
+            metadata = log.get('metadata', {})
 
-            # Count workflow starts
-            if 'starting iptv refresh workflow' in message or 'refresh workflow started' in message:
-                total_runs += 1
+            # Extract refresh ID
+            refresh_id = metadata.get('refresh_id')
+            if refresh_id:
+                refresh_ids.add(refresh_id)
 
-            # Count successful completions
-            elif 'workflow completed successfully' in message or 'all steps completed' in message:
-                successful_runs += 1
+                # Check for step completion/failure
+                step_status = metadata.get('step_status')
+                if step_status == 'completed' and metadata.get('step_number') == 8:
+                    # Step 8 completion means workflow completed
+                    completed_refreshes.add(refresh_id)
+                elif step_status == 'failed':
+                    failed_refreshes.add(refresh_id)
 
-            # Count failures
-            elif 'workflow failed' in message or 'error in step' in message:
-                failed_runs += 1
+        total_runs = len(refresh_ids)
+        successful_runs = len(completed_refreshes)
+        failed_runs = len(failed_refreshes)
 
         # Calculate success rate
         success_rate = (successful_runs / total_runs * 100) if total_runs > 0 else 0
@@ -592,18 +602,21 @@ def analyze_recording_statistics(logs):
         }
 
         for log in logs:
-            message = log.get('message', '').lower()
+            message = log.get('message', '')
+            metadata = log.get('metadata', {})
 
-            # Count events found from calendar feeds
-            if 'event found' in message or 'calendar event' in message:
-                recordings['calendar_feeds_found'] += 1
+            # Count successful step completions as "events processed"
+            if metadata.get('step_status') == 'completed':
+                step_number = metadata.get('step_number')
+                if step_number in [6, 7, 8]:  # Steps related to recording processing
+                    recordings['calendar_feeds_found'] += 1
 
-            # Count successful DVR scheduling
-            elif 'scheduled recording' in message or 'recording scheduled' in message:
+            # Count successful workflow completions as "scheduled in DVR"
+            if metadata.get('step_status') == 'completed' and metadata.get('step_number') == 8:
                 recordings['scheduled_in_dvr'] += 1
 
-            # Count failed recordings
-            elif 'failed to schedule' in message or 'recording failed' in message:
+            # Count failed steps as "failed recordings"
+            elif metadata.get('step_status') == 'failed':
                 recordings['failed_recordings'] += 1
 
         # Calculate recording success rate
@@ -623,7 +636,7 @@ def get_error_analysis():
         # Use host-based endpoint for better performance
         search_params = {
             'application': 'sports-scheduler',
-            'component': 'automated-recording',
+            'component': 'iptv-orchestrator',
             'time': 'last 7 days',
             'log': 'errors',  # Filter for errors only
             'limit': 50
@@ -675,17 +688,18 @@ def get_error_analysis():
 def get_recent_failures():
     """Get the last 5 failed orchestrator runs."""
     try:
-        # Search for failure logs
+        # Use host-based endpoint for better performance
         search_params = {
-            'search': 'failed',
-            'component': 'automated-recording',
+            'application': 'sports-scheduler',
+            'component': 'iptv-orchestrator',
             'time': 'last 7 days',
+            'log': 'errors',  # Filter for errors only
             'limit': 50
         }
 
         # Use the correct log API endpoint (port 8080)
         log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+        response = requests.get(f"{log_api_url}/logger/host=ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code != 200:
@@ -716,17 +730,17 @@ def get_recent_failures():
 def get_missed_recordings_stats():
     """Get statistics about missed recordings."""
     try:
-        # Search for missed recording indicators
+        # Use host-based endpoint for better performance
         search_params = {
-            'search': 'missed',
-            'component': 'automated-recording',
+            'application': 'sports-scheduler',
+            'component': 'iptv-orchestrator',
             'time': 'last 7 days',
             'limit': 100
         }
 
         # Use the correct log API endpoint (port 8080)
         log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+        response = requests.get(f"{log_api_url}/logger/host=ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code != 200:
