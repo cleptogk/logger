@@ -384,7 +384,8 @@ def extract_timestamp_from_log_line(line):
 
     # Try different timestamp formats
     timestamp_patterns = [
-        r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2})',  # ISO format with timezone
+        r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}:\d{2})',  # ISO format with timezone (decimal optional)
+        r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)',  # ISO format without timezone (decimal optional)
         r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})',  # Standard format
         r'(\w{3} \d{2} \d{2}:\d{2}:\d{2})',  # Syslog format
     ]
@@ -395,14 +396,14 @@ def extract_timestamp_from_log_line(line):
             timestamp_str = match.group(1)
             try:
                 if 'T' in timestamp_str and ('+' in timestamp_str or '-' in timestamp_str[-6:]):
-                    # ISO format with timezone (like 2025-06-06T07:18:31.234567-07:00)
+                    # ISO format with timezone (like 2025-06-06T07:18:31.234567-07:00 or 2025-06-12T13:12:22-07:00)
                     parsed_time = datetime.fromisoformat(timestamp_str)
                     # Convert to Pacific timezone if not already
                     if parsed_time.tzinfo is None:
                         parsed_time = pacific_tz.localize(parsed_time)
                     return parsed_time
                 elif 'T' in timestamp_str:
-                    # ISO format without timezone
+                    # ISO format without timezone (like 2025-06-06T07:18:31.234567 or 2025-06-12T13:12:22)
                     parsed_time = datetime.fromisoformat(timestamp_str.replace('Z', ''))
                     return pacific_tz.localize(parsed_time)
                 elif '-' in timestamp_str:
