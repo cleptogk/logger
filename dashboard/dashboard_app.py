@@ -528,7 +528,7 @@ def get_period_statistics(time_filter):
             return {'runs': {}, 'recordings': {}}
 
         data = response.json()
-        logs = data.get('results', [])
+        logs = data.get('logs', [])
 
         # Analyze logs for run and recording statistics
         runs_data = analyze_orchestrator_runs(logs)
@@ -651,7 +651,7 @@ def get_error_analysis():
             return {'top_errors': [], 'error_trends': {}}
 
         data = response.json()
-        logs = data.get('results', [])
+        logs = data.get('logs', [])
 
         # Count error frequencies
         error_counts = {}
@@ -706,7 +706,7 @@ def get_recent_failures():
             return []
 
         data = response.json()
-        logs = data.get('results', [])
+        logs = data.get('logs', [])
 
         failures = []
         for log in logs:
@@ -747,7 +747,7 @@ def get_missed_recordings_stats():
             return {'total_missed': 0, 'reasons': {}}
 
         data = response.json()
-        logs = data.get('results', [])
+        logs = data.get('logs', [])
 
         missed_reasons = {}
         total_missed = 0
