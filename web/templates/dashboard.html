@@ -248,6 +248,12 @@
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/charts_config.js') }}"></script>
 <script>
+// Dashboard settings
+const settings = {
+    autoRefresh: true,
+    refreshInterval: 30  // seconds (increased from 5 to reduce refresh frequency)
+};
+
 // Dashboard-specific JavaScript
 $(document).ready(function() {
     initializeDashboard();
@@ -284,7 +290,7 @@ function initializeDashboard() {
 }
 
 function startRealTimeUpdates() {
-    // Update dashboard every 5 seconds
+    // Update dashboard based on settings.refreshInterval
     setInterval(function() {
         if (settings.autoRefresh) {
             loadDashboardStats();
