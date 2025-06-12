@@ -416,12 +416,12 @@ function loadActiveSources() {
                 return;
             }
 
-            // Get log counts for each source using the search API
+            // Get log counts for each source using the working logs API
             const promises = activeSources.map(source =>
-                $.get(`/api/dashboard/search?host=${source}&time=today&limit=100`)
+                $.get(`/api/logs?source=${source}&limit=100`)
                     .then(response => ({
                         name: source,
-                        logs: response.results || [],
+                        logs: response.logs || [],
                         total: response.total || 0
                     }))
                     .catch(error => {
