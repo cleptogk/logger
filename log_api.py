@@ -531,7 +531,7 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
 
                     # Advanced filtering
                     # 1. Full-text search
-                    if search_query and search_query.lower() not in line.lower():
+                    if search_query and search_query != '*' and search_query.lower() not in line.lower():
                         continue
 
                     # 2. Regex pattern matching
