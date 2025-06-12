@@ -302,8 +302,18 @@ function populateFormFromURL(urlParams) {
 }
 
 function performSearch() {
+    let searchQuery = $('#searchQuery').val();
+    let stepNumber = '';
+
+    // Extract step number from search query if present (e.g., "Refresh-45 Step 8")
+    const stepMatch = searchQuery.match(/(.+?)\s+Step\s+(\d+)$/i);
+    if (stepMatch) {
+        searchQuery = stepMatch[1].trim();
+        stepNumber = stepMatch[2];
+    }
+
     const formData = {
-        q: $('#searchQuery').val(),
+        q: searchQuery,
         host: $('#hostSelect').val(),
         application: $('#applicationSelect').val(),
         component: $('#componentSelect').val(),
@@ -314,6 +324,11 @@ function performSearch() {
         limit: 100,
         offset: (currentPage - 1) * 100
     };
+
+    // Add step parameter if extracted
+    if (stepNumber) {
+        formData.step = stepNumber;
+    }
     
     // Remove empty parameters
     Object.keys(formData).forEach(key => {
