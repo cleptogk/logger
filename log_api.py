@@ -465,7 +465,25 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
     # Determine which application to look for
     app_filter = application.lower() if application and application != 'all' else None
 
-    for log_file in log_dir.rglob('*.log'):
+    # Prioritize specific component files over general system logs
+    log_files = list(log_dir.rglob('*.log'))
+
+    # Sort files to prioritize specific component files
+    def file_priority(file_path):
+        path_str = str(file_path)
+        # Highest priority: specific component files
+        if '/sports-scheduler/' in path_str:
+            return 0
+        # Medium priority: other specific application directories
+        elif any(app in path_str for app in ['/auto-scraper/', '/nginx/']):
+            return 1
+        # Lowest priority: general system logs
+        else:
+            return 2
+
+    log_files.sort(key=file_priority)
+
+    for log_file in log_files:
         if log_file.is_file():
             # Skip files that are too large
             if log_file.stat().st_size > MAX_FILE_SIZE:
@@ -496,37 +514,54 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                     if end_time and log_timestamp > end_time:
                         continue
 
-                    # Determine application from message content
+                    # Determine application from file path first, then message content
                     detected_app = 'unknown'
-                    if app_filter:
-                        # Check if application filter matches anywhere in the line
-                        if app_filter.lower() in line.lower() or app_filter.replace('-', '_') in line:
-                            detected_app = app_filter
-                        else:
-                            continue  # Skip if application filter doesn't match
-                    else:
-                        # Try to detect application from enhanced logging patterns
-                        # Check for sports-scheduler first (most specific patterns)
-                        if ('sports_scheduler.' in line or 'sports-scheduler' in line.lower() or
-                            'iptv' in line.lower() or 'orchestrator' in line.lower() or
-                            'Step' in line or '[Refresh-' in line or
-                            'refresh workflow' in line.lower() or
-                            'epg' in line.lower() or 'playlist' in line.lower() or
-                            'channel' in line.lower() or 'dvr' in line.lower()):
-                            detected_app = 'sports-scheduler'
-                        elif ('auto_scraper.' in line or 'auto-scraper' in line.lower() or
-                              'scraper' in line.lower() or 'list creator' in line.lower() or
-                              'trakt' in line.lower()):
-                            detected_app = 'auto-scraper'
-                        elif 'nginx' in line.lower() and 'sports_scheduler' not in line:
-                            detected_app = 'nginx'
-                        elif ('systemd' in line.lower() or 'service' in line.lower() or
-                              'github-runner' in line.lower()) and 'sports_scheduler' not in line:
-                            detected_app = 'system'
-                        # Don't categorize as 'gunicorn' - let it fall through to check message content
 
-                    # Identify component and step
-                    detected_component, detected_step = identify_component_and_step(detected_app, line)
+                    # First, try to detect application from file path (most reliable)
+                    file_path_str = str(log_file)
+                    if '/sports-scheduler/' in file_path_str:
+                        detected_app = 'sports-scheduler'
+                    elif '/auto-scraper/' in file_path_str:
+                        detected_app = 'auto-scraper'
+                    elif '/nginx/' in file_path_str:
+                        detected_app = 'nginx'
+                    elif 'system.log' in file_path_str:
+                        detected_app = 'system'
+
+                    # If no file path match, fall back to content-based detection
+                    if detected_app == 'unknown':
+                        if app_filter:
+                            # Check if application filter matches anywhere in the line
+                            if app_filter.lower() in line.lower() or app_filter.replace('-', '_') in line:
+                                detected_app = app_filter
+                            else:
+                                continue  # Skip if application filter doesn't match
+                        else:
+                            # Try to detect application from enhanced logging patterns
+                            # Check for sports-scheduler first (most specific patterns)
+                            if ('sports_scheduler.' in line or 'sports-scheduler' in line.lower() or
+                                'iptv' in line.lower() or 'orchestrator' in line.lower() or
+                                'Step' in line or '[Refresh-' in line or
+                                'refresh workflow' in line.lower() or
+                                'epg' in line.lower() or 'playlist' in line.lower() or
+                                'channel' in line.lower() or 'dvr' in line.lower()):
+                                detected_app = 'sports-scheduler'
+                            elif ('auto_scraper.' in line or 'auto-scraper' in line.lower() or
+                                  'scraper' in line.lower() or 'list creator' in line.lower() or
+                                  'trakt' in line.lower()):
+                                detected_app = 'auto-scraper'
+                            elif 'nginx' in line.lower() and 'sports_scheduler' not in line:
+                                detected_app = 'nginx'
+                            elif ('systemd' in line.lower() or 'service' in line.lower() or
+                                  'github-runner' in line.lower()) and 'sports_scheduler' not in line:
+                                detected_app = 'system'
+
+                    # Apply application filter if specified
+                    if app_filter and app_filter != 'all' and detected_app != app_filter:
+                        continue
+
+                    # Identify component and step (enhanced with file path detection)
+                    detected_component, detected_step = identify_component_and_step(detected_app, line, str(log_file))
 
                     # Apply component filtering
                     if component and component != 'all' and component != detected_component:
