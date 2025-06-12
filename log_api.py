@@ -344,12 +344,37 @@ def parse_time_filter(time_str):
 
     return None, None
 
-def identify_component_and_step(application, message):
-    """Identify component and step from log message."""
+def extract_step_from_message(message):
+    """Extract step number from message."""
+    step_match = re.search(r'step\s*(\d+)(?:/8)?', message, re.IGNORECASE)
+    if step_match:
+        return f"step-{step_match.group(1)}"
+    return None
+
+def identify_component_and_step(application, message, file_path=None):
+    """Identify component and step from log message and optionally file path."""
     if application not in COMPONENT_PATTERNS:
         return 'general', None
 
     message_lower = message.lower()
+
+    # First try to detect component from file path (most reliable)
+    if file_path:
+        file_path_str = str(file_path).lower()
+        if 'iptv-orchestrator.log' in file_path_str:
+            return 'iptv-orchestrator', extract_step_from_message(message)
+        elif 'epg-processor.log' in file_path_str:
+            return 'epg-processor', extract_step_from_message(message)
+        elif 'automated-recording.log' in file_path_str:
+            return 'automated-recordings', extract_step_from_message(message)
+        elif 'calendar-feed-processing.log' in file_path_str:
+            return 'calendar-feed-processing', extract_step_from_message(message)
+        elif 'recording-name-generation.log' in file_path_str:
+            return 'recording-name-generation', extract_step_from_message(message)
+        elif 'application.log' in file_path_str:
+            return 'application', extract_step_from_message(message)
+        elif 'playlist' in file_path_str:
+            return 'playlist-generation', extract_step_from_message(message)
 
     # Check each component
     for component, config in COMPONENT_PATTERNS[application].items():
