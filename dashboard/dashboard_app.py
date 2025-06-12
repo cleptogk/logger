@@ -441,13 +441,322 @@ def system_status():
 
 @app.route('/api/dashboard/iptv-orchestrator')
 def get_iptv_orchestrator_data():
-    """Get IPTV orchestrator workflow data with enhanced error handling."""
+    """Get IPTV orchestrator workflow data with enhanced statistics."""
     try:
         if not logging_server_url:
             logger.error("Logging server URL not initialized")
             return jsonify({'error': 'Logging server not available'}), 503
 
-        # Use search endpoint with current day data
+        # Get comprehensive statistics for different time periods
+        stats = get_iptv_orchestrator_statistics()
+
+        return jsonify(stats)
+
+    except Exception as e:
+        logger.error(f"Failed to get IPTV orchestrator data: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def get_iptv_orchestrator_statistics():
+    """Get comprehensive IPTV orchestrator statistics for dashboard."""
+    try:
+        # Get data for different time periods
+        time_periods = {
+            'day': 'today',
+            'week': 'last 7 days',
+            'month': 'last 30 days'
+        }
+
+        stats = {
+            'run_statistics': {},
+            'recording_statistics': {},
+            'error_analysis': {},
+            'recent_failures': [],
+            'missed_recordings': {},
+            'last_updated': datetime.now().isoformat()
+        }
+
+        # Collect data for each time period
+        for period, time_filter in time_periods.items():
+            period_data = get_period_statistics(time_filter)
+            stats['run_statistics'][period] = period_data['runs']
+            stats['recording_statistics'][period] = period_data['recordings']
+
+        # Get error analysis and recent failures
+        stats['error_analysis'] = get_error_analysis()
+        stats['recent_failures'] = get_recent_failures()
+        stats['missed_recordings'] = get_missed_recordings_stats()
+
+        # Get current workflows for compatibility
+        current_workflows = get_current_workflows()
+        stats['workflows'] = current_workflows
+        stats['total_workflows'] = len(current_workflows)
+        stats['success_rate'] = calculate_success_rate(current_workflows)
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Failed to get IPTV orchestrator statistics: {e}")
+        return {
+            'error': str(e),
+            'run_statistics': {'day': {}, 'week': {}, 'month': {}},
+            'recording_statistics': {'day': {}, 'week': {}, 'month': {}},
+            'error_analysis': {},
+            'recent_failures': [],
+            'missed_recordings': {},
+            'workflows': [],
+            'total_workflows': 0,
+            'success_rate': 0
+        }
+
+def get_period_statistics(time_filter):
+    """Get statistics for a specific time period."""
+    try:
+        # Search for automated recording logs
+        search_params = {
+            'search': 'automated-recording',
+            'time': time_filter,
+            'limit': 500
+        }
+
+        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
+                              params=search_params, timeout=15)
+
+        if response.status_code != 200:
+            return {'runs': {}, 'recordings': {}}
+
+        data = response.json()
+        logs = data.get('results', [])
+
+        # Analyze logs for run and recording statistics
+        runs_data = analyze_orchestrator_runs(logs)
+        recordings_data = analyze_recording_statistics(logs)
+
+        return {
+            'runs': runs_data,
+            'recordings': recordings_data
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get period statistics for {time_filter}: {e}")
+        return {'runs': {}, 'recordings': {}}
+
+def analyze_orchestrator_runs(logs):
+    """Analyze logs to extract orchestrator run statistics."""
+    try:
+        runs = {}
+        total_runs = 0
+        successful_runs = 0
+        failed_runs = 0
+
+        # Look for workflow completion indicators
+        for log in logs:
+            message = log.get('message', '').lower()
+
+            # Count workflow starts
+            if 'starting iptv refresh workflow' in message or 'refresh workflow started' in message:
+                total_runs += 1
+
+            # Count successful completions
+            elif 'workflow completed successfully' in message or 'all steps completed' in message:
+                successful_runs += 1
+
+            # Count failures
+            elif 'workflow failed' in message or 'error in step' in message:
+                failed_runs += 1
+
+        # Calculate success rate
+        success_rate = (successful_runs / total_runs * 100) if total_runs > 0 else 0
+
+        return {
+            'total_runs': total_runs,
+            'successful_runs': successful_runs,
+            'failed_runs': failed_runs,
+            'success_rate': success_rate
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to analyze orchestrator runs: {e}")
+        return {'total_runs': 0, 'successful_runs': 0, 'failed_runs': 0, 'success_rate': 0}
+
+def analyze_recording_statistics(logs):
+    """Analyze logs to extract recording statistics."""
+    try:
+        recordings = {
+            'calendar_feeds_found': 0,
+            'scheduled_in_dvr': 0,
+            'failed_recordings': 0,
+            'success_rate': 0
+        }
+
+        for log in logs:
+            message = log.get('message', '').lower()
+
+            # Count events found from calendar feeds
+            if 'event found' in message or 'calendar event' in message:
+                recordings['calendar_feeds_found'] += 1
+
+            # Count successful DVR scheduling
+            elif 'scheduled recording' in message or 'recording scheduled' in message:
+                recordings['scheduled_in_dvr'] += 1
+
+            # Count failed recordings
+            elif 'failed to schedule' in message or 'recording failed' in message:
+                recordings['failed_recordings'] += 1
+
+        # Calculate recording success rate
+        total_attempts = recordings['calendar_feeds_found']
+        if total_attempts > 0:
+            recordings['success_rate'] = (recordings['scheduled_in_dvr'] / total_attempts * 100)
+
+        return recordings
+
+    except Exception as e:
+        logger.error(f"Failed to analyze recording statistics: {e}")
+        return {'calendar_feeds_found': 0, 'scheduled_in_dvr': 0, 'failed_recordings': 0, 'success_rate': 0}
+
+def get_error_analysis():
+    """Get top errors and their frequencies."""
+    try:
+        # Search for error logs in the past week
+        search_params = {
+            'search': 'error',
+            'component': 'automated-recording',
+            'time': 'last 7 days',
+            'limit': 200
+        }
+
+        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
+                              params=search_params, timeout=15)
+
+        if response.status_code != 200:
+            return {'top_errors': [], 'error_trends': {}}
+
+        data = response.json()
+        logs = data.get('results', [])
+
+        # Count error frequencies
+        error_counts = {}
+        for log in logs:
+            message = log.get('message', '')
+
+            # Categorize common errors
+            if 'not mapped to dvr' in message.lower():
+                error_counts['Channel not mapped to DVR'] = error_counts.get('Channel not mapped to DVR', 0) + 1
+            elif 'epg data missing' in message.lower():
+                error_counts['EPG data missing'] = error_counts.get('EPG data missing', 0) + 1
+            elif 'api timeout' in message.lower():
+                error_counts['API timeout'] = error_counts.get('API timeout', 0) + 1
+            elif 'connection failed' in message.lower():
+                error_counts['Connection failed'] = error_counts.get('Connection failed', 0) + 1
+            elif 'authentication' in message.lower():
+                error_counts['Authentication error'] = error_counts.get('Authentication error', 0) + 1
+            else:
+                # Generic error category
+                error_counts['Other errors'] = error_counts.get('Other errors', 0) + 1
+
+        # Sort by frequency and get top 10
+        top_errors = sorted(error_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+        return {
+            'top_errors': [{'error': error, 'count': count} for error, count in top_errors],
+            'total_errors': sum(error_counts.values())
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get error analysis: {e}")
+        return {'top_errors': [], 'total_errors': 0}
+
+def get_recent_failures():
+    """Get the last 5 failed orchestrator runs."""
+    try:
+        # Search for failure logs
+        search_params = {
+            'search': 'failed',
+            'component': 'automated-recording',
+            'time': 'last 7 days',
+            'limit': 50
+        }
+
+        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
+                              params=search_params, timeout=15)
+
+        if response.status_code != 200:
+            return []
+
+        data = response.json()
+        logs = data.get('results', [])
+
+        failures = []
+        for log in logs:
+            message = log.get('message', '')
+            timestamp = log.get('timestamp', '')
+
+            if 'failed' in message.lower():
+                failures.append({
+                    'timestamp': timestamp,
+                    'error_message': message,
+                    'component': log.get('component', 'unknown')
+                })
+
+        # Return last 5 failures
+        return failures[:5]
+
+    except Exception as e:
+        logger.error(f"Failed to get recent failures: {e}")
+        return []
+
+def get_missed_recordings_stats():
+    """Get statistics about missed recordings."""
+    try:
+        # Search for missed recording indicators
+        search_params = {
+            'search': 'missed',
+            'component': 'automated-recording',
+            'time': 'last 7 days',
+            'limit': 100
+        }
+
+        response = requests.get(f"{logging_server_url}/logger/search/ssdev",
+                              params=search_params, timeout=15)
+
+        if response.status_code != 200:
+            return {'total_missed': 0, 'reasons': {}}
+
+        data = response.json()
+        logs = data.get('results', [])
+
+        missed_reasons = {}
+        total_missed = 0
+
+        for log in logs:
+            message = log.get('message', '').lower()
+
+            if 'not mapped' in message:
+                missed_reasons['Channel not mapped'] = missed_reasons.get('Channel not mapped', 0) + 1
+                total_missed += 1
+            elif 'epg missing' in message:
+                missed_reasons['EPG data missing'] = missed_reasons.get('EPG data missing', 0) + 1
+                total_missed += 1
+            elif 'conflict' in message:
+                missed_reasons['Scheduling conflict'] = missed_reasons.get('Scheduling conflict', 0) + 1
+                total_missed += 1
+            elif 'api failed' in message:
+                missed_reasons['API failure'] = missed_reasons.get('API failure', 0) + 1
+                total_missed += 1
+
+        return {
+            'total_missed': total_missed,
+            'reasons': missed_reasons
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get missed recordings stats: {e}")
+        return {'total_missed': 0, 'reasons': {}}
+
+def get_current_workflows():
+    """Get current workflow data for compatibility with existing UI."""
+    try:
+        # Use existing workflow processing logic
         search_params = {
             'search': 'Refresh-',
             'component': 'iptv-orchestrator',
@@ -455,49 +764,19 @@ def get_iptv_orchestrator_data():
             'limit': 100
         }
 
-        logger.info(f"Fetching IPTV orchestrator data from {logging_server_url}/logger/search/ssdev")
         response = requests.get(f"{logging_server_url}/logger/search/ssdev",
                               params=search_params, timeout=15)
 
         if response.status_code == 200:
             data = response.json()
-            logger.info(f"Successfully fetched {len(data.get('results', []))} log entries")
-
-            # Process workflow data from search results
             workflows = process_workflow_data(data.get('results', []))
-            analytics = data.get('analytics', {})
+            return workflows
+        else:
+            return []
 
-            result = {
-                'workflows': workflows,
-                'analytics': analytics,
-                'total_workflows': len(workflows),
-                'success_rate': calculate_success_rate(workflows),
-                'last_updated': datetime.now().isoformat(),
-                'data_source': 'enhanced_api'
-            }
-
-            logger.info(f"Processed {len(workflows)} workflows with {result['success_rate']:.1f}% success rate")
-            return jsonify(result)
-
-        elif response.status_code == 404:
-            logger.warning("IPTV orchestrator endpoint not found, trying fallback")
-            # Fallback to general search
-            fallback_response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                                           params={'search': 'iptv-orchestrator', 'time': 'today', 'limit': 50},
-                                           timeout=10)
-            if fallback_response.status_code == 200:
-                data = fallback_response.json()
-                workflows = process_workflow_data(data.get('results', []))
-                return jsonify({
-                    'workflows': workflows,
-                    'total_workflows': len(workflows),
-                    'success_rate': calculate_success_rate(workflows),
-                    'analytics': {'note': 'Using fallback search'},
-                    'data_source': 'fallback_search'
-                })
-
-        logger.error(f"API request failed with status {response.status_code}: {response.text}")
-        return jsonify({'error': f'API request failed: {response.status_code}'}), response.status_code
+    except Exception as e:
+        logger.error(f"Failed to get current workflows: {e}")
+        return []
 
     except requests.exceptions.Timeout:
         logger.error("Timeout while fetching IPTV orchestrator data")
