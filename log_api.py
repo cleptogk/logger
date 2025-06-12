@@ -201,11 +201,22 @@ COMPONENT_PATTERNS = {
             }
         },
         'scheduler': {
-            'patterns': [r'scheduler', r'cron', r'schedule.*task'],
+            'patterns': [r'scheduler', r'cron', r'schedule.*task', r'apscheduler'],
             'steps': {
                 'trigger': [r'trigger.*job', r'starting.*job', r'job.*triggered'],
                 'execute': [r'execute.*job', r'running.*job', r'job.*execution'],
                 'complete': [r'complete.*job', r'job.*completed', r'job.*finished']
+            }
+        }
+    },
+    'system': {
+        'general': {
+            'patterns': [r'systemd', r'service', r'github-runner', r'failed.*result', r'started.*service', r'stopped.*service'],
+            'steps': {
+                'start': [r'start.*service', r'starting.*service'],
+                'stop': [r'stop.*service', r'stopping.*service'],
+                'restart': [r'restart.*service', r'restarting.*service'],
+                'fail': [r'failed.*result', r'failed.*step', r'exit.*code']
             }
         }
     },
@@ -495,18 +506,24 @@ def read_logs_with_filters(host, application=None, component=None, step=None,
                             continue  # Skip if application filter doesn't match
                     else:
                         # Try to detect application from enhanced logging patterns
+                        # Check for sports-scheduler first (most specific patterns)
                         if ('sports_scheduler.' in line or 'sports-scheduler' in line.lower() or
                             'iptv' in line.lower() or 'orchestrator' in line.lower() or
                             'Step' in line or '[Refresh-' in line or
-                            'refresh workflow' in line.lower()):
+                            'refresh workflow' in line.lower() or
+                            'epg' in line.lower() or 'playlist' in line.lower() or
+                            'channel' in line.lower() or 'dvr' in line.lower()):
                             detected_app = 'sports-scheduler'
                         elif ('auto_scraper.' in line or 'auto-scraper' in line.lower() or
-                              'scraper' in line.lower() or 'list creator' in line.lower()):
+                              'scraper' in line.lower() or 'list creator' in line.lower() or
+                              'trakt' in line.lower()):
                             detected_app = 'auto-scraper'
-                        elif 'nginx' in line.lower():
+                        elif 'nginx' in line.lower() and 'sports_scheduler' not in line:
                             detected_app = 'nginx'
-                        elif 'gunicorn' in line.lower():
-                            detected_app = 'gunicorn'
+                        elif ('systemd' in line.lower() or 'service' in line.lower() or
+                              'github-runner' in line.lower()) and 'sports_scheduler' not in line:
+                            detected_app = 'system'
+                        # Don't categorize as 'gunicorn' - let it fall through to check message content
 
                     # Identify component and step
                     detected_component, detected_step = identify_component_and_step(detected_app, line)
