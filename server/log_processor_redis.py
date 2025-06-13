@@ -75,8 +75,7 @@ class RedisLogProcessor:
                 # Block for up to 1 second waiting for a file from Redis queue
                 result = self.redis_client.brpop('log_files_queue', timeout=1)
                 if result:
-                    queue_name, file_path_bytes = result
-                    file_path = file_path_bytes.decode('utf-8')
+                    queue_name, file_path = result
 
                     # Extract host from path
                     path_parts = Path(file_path).parts
