@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 import hashlib
 import re
 
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'))
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), '..', 'web', 'templates'))
 
 # Configure Flask for minimal memory usage
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
@@ -212,7 +212,7 @@ redis_api = RedisLogAPI()
 def dashboard():
     """Enhanced log viewer dashboard."""
     from flask import render_template
-    return render_template('enhanced_dashboard.html')
+    return render_template('dashboard.html')
 
 @app.route('/health')
 def health():
