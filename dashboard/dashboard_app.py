@@ -4,6 +4,13 @@ Centralized Logging Dashboard
 Web-based dashboard for log visualization and monitoring.
 """
 
+# Apply eventlet monkey patching FIRST to avoid compatibility issues
+try:
+    import eventlet
+    eventlet.monkey_patch()
+except ImportError:
+    pass  # eventlet not available, continue without monkey patching
+
 import os
 import sys
 import logging
@@ -25,6 +32,7 @@ import requests
 try:
     from flask_socketio import SocketIO, emit
     SOCKETIO_AVAILABLE = True
+    logger.info("✅ SocketIO available - real-time features enabled")
 except ImportError:
     logger.warning("⚠️ flask_socketio not available, real-time features disabled")
     SOCKETIO_AVAILABLE = False

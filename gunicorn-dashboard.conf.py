@@ -11,9 +11,9 @@ bind = f"0.0.0.0:{os.environ.get('DASHBOARD_PORT', 8081)}"
 backlog = 1024
 
 # Worker processes
-workers = 2  # Multiple workers for better performance
+workers = 1  # Single worker for eventlet/SocketIO compatibility
 worker_class = "eventlet"  # Use eventlet for SocketIO support
-worker_connections = 200  # Increased connections
+worker_connections = 1000  # Increased connections for single worker
 max_requests = 1000  # Restart worker after more requests
 max_requests_jitter = 100
 worker_tmp_dir = "/tmp"
