@@ -37,7 +37,7 @@ class RedisLogProcessor:
         
         # Cache settings
         self.log_ttl = int(os.environ.get('LOG_TTL_HOURS', 24)) * 3600  # 24 hours
-        self.max_lines_per_file = int(os.environ.get('MAX_LINES_PER_FILE', 5000))
+        self.max_lines_per_file = int(os.environ.get('MAX_LINES_PER_FILE', 5000))  # 0 = unlimited
         self.max_file_size = int(os.environ.get('MAX_FILE_SIZE_MB', 50)) * 1024 * 1024
         
         # Redis key patterns
@@ -49,7 +49,8 @@ class RedisLogProcessor:
             'search': 'logs:search:{query_hash}'
         }
         
-        logger.info(f"Redis Log Processor initialized - TTL: {self.log_ttl}s, Max lines: {self.max_lines_per_file}")
+        max_lines_display = "unlimited" if self.max_lines_per_file == 0 else str(self.max_lines_per_file)
+        logger.info(f"Redis Log Processor initialized - TTL: {self.log_ttl}s, Max lines: {max_lines_display}")
 
     def start_workers(self, num_workers=4):
         """Start background worker threads."""
@@ -177,17 +178,19 @@ class RedisLogProcessor:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 # Read file in reverse to get most recent logs first
                 lines = f.readlines()
-                
-                # Limit lines processed
-                if len(lines) > self.max_lines_per_file:
+
+                # Limit lines processed (0 = unlimited)
+                if self.max_lines_per_file > 0 and len(lines) > self.max_lines_per_file:
                     lines = lines[-self.max_lines_per_file:]
                     logger.warning(f"Worker {worker_id}: Truncated {file_path} to {self.max_lines_per_file} lines")
-                
+                else:
+                    logger.info(f"Worker {worker_id}: Processing all {len(lines)} lines from {file_path}")
+
                 # Process lines in reverse (newest first)
                 for line_num, line in enumerate(reversed(lines)):
                     if not line.strip():
                         continue
-                        
+
                     log_entry = self._parse_log_line(line, file_path, line_num)
                     if log_entry:
                         self._store_log_entry(log_entry, host, app_name, component)
