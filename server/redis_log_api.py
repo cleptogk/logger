@@ -90,12 +90,24 @@ class RedisLogAPI:
             # Fetch log entries
             logs = []
             for key in log_keys[offset:offset + limit]:
-                log_data = self.redis_client.hgetall(key)
-                if log_data:
-                    # Apply search filter if specified
-                    if search_query and search_query.lower() not in log_data.get('message', '').lower():
-                        continue
-                    logs.append(log_data)
+                try:
+                    log_data = self.redis_client.hgetall(key)
+                    if log_data:
+                        # Convert bytes to strings if needed
+                        if isinstance(log_data, dict) and log_data:
+                            # Redis returns bytes, convert to strings
+                            log_data = {k.decode() if isinstance(k, bytes) else k:
+                                       v.decode() if isinstance(v, bytes) else v
+                                       for k, v in log_data.items()}
+
+                        # Apply search filter if specified
+                        if search_query and search_query.lower() not in log_data.get('message', '').lower():
+                            continue
+                        logs.append(log_data)
+                except Exception as e:
+                    # Skip missing or corrupted log entries
+                    print(f"Warning: Could not fetch log entry {key}: {e}")
+                    continue
             
             result = {
                 'logs': logs,
