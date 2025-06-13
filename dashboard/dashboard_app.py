@@ -256,7 +256,7 @@ def get_dashboard_logs():
         # Build Redis API request
         host = request.args.get('host', 'ssdev')
         app = request.args.get('application', 'sports-scheduler')
-        component = request.args.get('component', '')
+        component = request.args.get('component', 'application')  # Default to 'application' component
         level = request.args.get('level', '')
         search = request.args.get('search', '')
         refresh_id = request.args.get('refresh_id', '')
