@@ -52,7 +52,7 @@ except ImportError:
 
 # Initialize Flask app with memory optimizations
 app = Flask(__name__,
-           template_folder='../web/templates',
+           template_folder='../templates',
            static_folder='../web/static')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
