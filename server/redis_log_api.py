@@ -117,27 +117,25 @@ class RedisLogAPI:
 
     def _get_wildcard_logs(self, pattern: str, start_score, end_score, limit: int) -> List[str]:
         """Handle wildcard queries by scanning multiple keys."""
-        all_keys = []
-        
+        all_logs = []
+
         # Get all matching keys
         for key in self.redis_client.scan_iter(match=pattern):
             if ':level:' in key or ':refresh:' in key or ':step:' in key:
                 continue  # Skip filter keys
-                
-            key_logs = self.redis_client.zrevrangebyscore(
-                key, end_score, start_score, start=0, num=limit
+
+            # Get logs from this sorted set with scores
+            key_logs_with_scores = self.redis_client.zrevrangebyscore(
+                key, end_score, start_score, start=0, num=limit, withscores=True
             )
-            all_keys.extend(key_logs)
-        
-        # Sort by timestamp (newest first)
-        scored_keys = []
-        for key in all_keys:
-            score = self.redis_client.zscore(pattern.replace('*', 'temp'), key)
-            if score:
-                scored_keys.append((key, score))
-        
-        scored_keys.sort(key=lambda x: x[1], reverse=True)
-        return [key for key, score in scored_keys[:limit]]
+
+            # Add to our collection with the actual scores from this key
+            for log_key, score in key_logs_with_scores:
+                all_logs.append((log_key, score))
+
+        # Sort by timestamp (newest first) and limit
+        all_logs.sort(key=lambda x: x[1], reverse=True)
+        return [log_key for log_key, score in all_logs[:limit]]
 
     def _generate_cache_key(self, query_key: str, start_score, end_score, limit: int, offset: int) -> str:
         """Generate cache key for query."""
