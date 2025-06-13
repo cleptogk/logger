@@ -1,0 +1,54 @@
+[Unit]
+Description=Redis Log API - Ultra-fast log queries via Redis
+After=network.target redis.service redis-log-processor.service
+Requires=redis.service
+Wants=redis-log-processor.service
+Documentation=https://github.com/cleptogk/logger
+
+[Service]
+Type=simple
+User=logserver
+Group=logserver
+WorkingDirectory=/opt/logging/logger
+Environment=PYTHONPATH=/opt/logging/logger
+Environment=REDIS_HOST=127.0.0.1
+Environment=REDIS_PORT=6379
+Environment=REDIS_DB=0
+
+ExecStart=/opt/logging/logger/venv/bin/python -m gunicorn \
+    --bind 0.0.0.0:8080 \
+    --workers 2 \
+    --worker-class sync \
+    --worker-connections 100 \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --timeout 30 \
+    --keep-alive 2 \
+    --preload \
+    server.redis_log_api:app
+
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+
+# Minimal resource limits for API
+MemoryMax=256M
+MemoryHigh=200M
+CPUQuota=100%
+TasksMax=256
+LimitNPROC=512
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/logging
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=redis-log-api
+
+[Install]
+WantedBy=multi-user.target

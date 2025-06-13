@@ -1,0 +1,231 @@
+---
+- name: Deploy Redis-based Logging System to sslog
+  hosts: sslog
+  become: yes
+  vars:
+    logging_user: logserver
+    logging_group: logserver
+    logging_base_dir: /opt/logging
+    redis_log_dir: "{{ logging_base_dir }}/logger"
+    
+  tasks:
+    - name: Ensure Redis is installed
+      package:
+        name: redis-server
+        state: present
+      
+    - name: Start and enable Redis service
+      systemd:
+        name: redis-server
+        state: started
+        enabled: yes
+        
+    - name: Install Python dependencies for Redis logging
+      pip:
+        name:
+          - redis
+          - loguru
+          - watchdog
+          - flask
+          - gunicorn
+        state: present
+        
+    - name: Create logging directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ logging_user }}"
+        group: "{{ logging_group }}"
+        mode: '0755'
+      loop:
+        - "{{ redis_log_dir }}"
+        - "{{ redis_log_dir }}/server"
+        - "{{ redis_log_dir }}/templates"
+        - "{{ redis_log_dir }}/static"
+        - "{{ redis_log_dir }}/systemd"
+        
+    - name: Copy Redis log processor
+      copy:
+        src: ../server/log_processor_redis.py
+        dest: "{{ redis_log_dir }}/server/log_processor_redis.py"
+        owner: "{{ logging_user }}"
+        group: "{{ logging_group }}"
+        mode: '0755'
+        
+    - name: Copy Redis log API
+      copy:
+        src: ../server/redis_log_api.py
+        dest: "{{ redis_log_dir }}/server/redis_log_api.py"
+        owner: "{{ logging_user }}"
+        group: "{{ logging_group }}"
+        mode: '0755'
+        
+    - name: Copy enhanced dashboard template
+      copy:
+        src: ../templates/enhanced_dashboard.html
+        dest: "{{ redis_log_dir }}/templates/enhanced_dashboard.html"
+        owner: "{{ logging_user }}"
+        group: "{{ logging_group }}"
+        mode: '0644'
+        
+    - name: Copy systemd service files
+      copy:
+        src: "{{ item }}"
+        dest: /etc/systemd/system/
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - ../systemd/redis-log-processor.service
+        - ../systemd/redis-log-api.service
+      notify:
+        - reload systemd
+        
+    - name: Create Redis log processor environment file
+      copy:
+        content: |
+          # Redis Log Processor Configuration
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          REDIS_DB=0
+          LOG_BASE_PATH=/var/log/centralized
+          LOG_TTL_SECONDS=604800
+          WORKER_COUNT=4
+          BATCH_SIZE=100
+        dest: "{{ redis_log_dir }}/.env"
+        owner: "{{ logging_user }}"
+        group: "{{ logging_group }}"
+        mode: '0600'
+        
+    - name: Create Redis log API environment file
+      copy:
+        content: |
+          # Redis Log API Configuration
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          REDIS_DB=0
+          FLASK_ENV=production
+          FLASK_DEBUG=False
+        dest: "{{ redis_log_dir }}/server/.env"
+        owner: "{{ logging_user }}"
+        group: "{{ logging_group }}"
+        mode: '0600'
+        
+    - name: Configure Redis for logging workload
+      blockinfile:
+        path: /etc/redis/redis.conf
+        block: |
+          # Optimizations for logging workload
+          maxmemory 2gb
+          maxmemory-policy allkeys-lru
+          save 900 1
+          save 300 10
+          save 60 10000
+          # Disable some features not needed for logging
+          appendonly no
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - LOGGING OPTIMIZATIONS"
+      notify:
+        - restart redis
+        
+    - name: Start and enable Redis log processor
+      systemd:
+        name: redis-log-processor
+        state: started
+        enabled: yes
+        daemon_reload: yes
+        
+    - name: Start and enable Redis log API
+      systemd:
+        name: redis-log-api
+        state: started
+        enabled: yes
+        daemon_reload: yes
+        
+    - name: Create initial scan trigger script
+      copy:
+        content: |
+          #!/usr/bin/env python3
+          """Trigger initial scan of all log files"""
+          import redis
+          import json
+          import os
+          from pathlib import Path
+          
+          def trigger_scan():
+              r = redis.Redis(host='localhost', port=6379, db=0)
+              
+              # Find all log files
+              log_base = Path('/var/log/centralized')
+              log_files = []
+              
+              for log_file in log_base.rglob('*.log'):
+                  if log_file.is_file() and log_file.stat().st_size > 0:
+                      log_files.append(str(log_file))
+              
+              # Queue files for processing
+              for log_file in log_files:
+                  r.lpush('log_files_queue', log_file)
+              
+              print(f"Queued {len(log_files)} log files for processing")
+              
+              # Trigger processor restart to pick up files
+              os.system('systemctl restart redis-log-processor')
+              
+          if __name__ == '__main__':
+              trigger_scan()
+        dest: "{{ redis_log_dir }}/trigger_scan.py"
+        owner: "{{ logging_user }}"
+        group: "{{ logging_group }}"
+        mode: '0755'
+        
+    - name: Wait for services to start
+      wait_for:
+        port: "{{ item }}"
+        host: localhost
+        timeout: 30
+      loop:
+        - 6379  # Redis
+        - 8080  # Redis Log API
+        
+    - name: Trigger initial log scan
+      command: "python3 {{ redis_log_dir }}/trigger_scan.py"
+      become_user: "{{ logging_user }}"
+      
+    - name: Display service status
+      command: systemctl status {{ item }}
+      register: service_status
+      loop:
+        - redis-server
+        - redis-log-processor
+        - redis-log-api
+      
+    - name: Show Redis log system status
+      debug:
+        msg: |
+          🚀 Redis Logging System Deployed Successfully!
+          
+          Services Status:
+          {% for result in service_status.results %}
+          - {{ result.item }}: {{ 'RUNNING' if result.rc == 0 else 'FAILED' }}
+          {% endfor %}
+          
+          Access Points:
+          - Redis Log API: http://sslog:8080/
+          - Enhanced Dashboard: http://sslog:8080/
+          - Health Check: http://sslog:8080/health
+          
+          Query Examples:
+          - All logs: curl "http://sslog:8080/logger/redis/ssdev?limit=10"
+          - IPTV logs: curl "http://sslog:8080/logger/redis/ssdev?component=iptv-orchestrator&limit=10"
+          - Search: curl "http://sslog:8080/logger/search/redis/ssdev?search=Refresh-49"
+          - Stats: curl "http://sslog:8080/logger/stats/redis/ssdev"
+          
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+        
+    - name: restart redis
+      systemd:
+        name: redis-server
+        state: restarted

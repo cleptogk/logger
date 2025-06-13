@@ -1,0 +1,46 @@
+[Unit]
+Description=Redis Log Processor - Background log parsing service
+After=network.target redis.service
+Requires=redis.service
+Documentation=https://github.com/cleptogk/logger
+
+[Service]
+Type=simple
+User=logserver
+Group=logserver
+WorkingDirectory=/opt/logging/logger
+Environment=PYTHONPATH=/opt/logging/logger
+Environment=REDIS_HOST=127.0.0.1
+Environment=REDIS_PORT=6379
+Environment=REDIS_DB=0
+Environment=LOG_TTL_HOURS=24
+Environment=MAX_LINES_PER_FILE=5000
+Environment=MAX_FILE_SIZE_MB=50
+
+ExecStart=/opt/logging/logger/venv/bin/python server/log_processor_redis.py
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+
+# Resource limits for background processing
+MemoryMax=1G
+MemoryHigh=800M
+CPUQuota=200%
+TasksMax=512
+LimitNPROC=1024
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/centralized
+ReadOnlyPaths=/opt/logging
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=redis-log-processor
+
+[Install]
+WantedBy=multi-user.target
