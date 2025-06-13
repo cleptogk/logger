@@ -126,10 +126,10 @@ def initialize_dashboard():
         if dependency_issues:
             logger.warning(f"⚠️ Dependency issues found: {', '.join(dependency_issues)}")
 
-        # Set enhanced logging API URL with validation
-        api_port = os.environ.get('LOGGING_API_PORT', '8080')
+        # Set Redis logging API URL with validation
+        api_port = os.environ.get('REDIS_API_PORT', '8082')
         logging_server_url = f"http://127.0.0.1:{api_port}"
-        logger.info(f"🔗 Enhanced Logging API URL: {logging_server_url}")
+        logger.info(f"🔗 Redis Logging API URL: {logging_server_url}")
 
         # Test API connectivity
         try:
@@ -185,25 +185,21 @@ def workflow_analysis_page():
 def get_dashboard_stats():
     """Get dashboard statistics from enhanced logging API."""
     try:
-        # Get health status from enhanced logging API
+        # Get health status from Redis logging API
         health_response = requests.get(f"{logging_server_url}/health", timeout=5)
         health_data = health_response.json() if health_response.status_code == 200 else {}
 
-        # Get file information
-        files_response = requests.get(f"{logging_server_url}/logger/files", timeout=5)
-        files_data = files_response.json() if files_response.status_code == 200 else {}
-
-        # Get stats from the new /api/stats endpoint
-        stats_response = requests.get(f"{logging_server_url}/api/stats", timeout=10)
+        # Get stats from Redis API for ssdev
+        stats_response = requests.get(f"{logging_server_url}/logger/stats/redis/ssdev", timeout=10)
         api_stats = stats_response.json() if stats_response.status_code == 200 else {}
 
-        # Get recent logs for additional processing - limit to reduce memory usage
-        recent_logs_response = requests.get(f"{logging_server_url}/api/logs?source=ssdev&limit=50", timeout=5)
+        # Get recent logs from Redis API - limit to reduce memory usage
+        recent_logs_response = requests.get(f"{logging_server_url}/logger/redis/ssdev?limit=50", timeout=5)
         recent_logs_data = recent_logs_response.json() if recent_logs_response.status_code == 200 else {}
         logs_list = recent_logs_data.get('logs', [])
 
-        # Use API stats or calculate from logs
-        total_logs_today = api_stats.get('total_logs_today', len(logs_list))
+        # Use Redis stats or calculate from logs
+        total_logs_today = api_stats.get('total_logs', len(logs_list))
 
         # Calculate level distribution from recent logs - limit processing
         level_distribution = {}
@@ -211,31 +207,39 @@ def get_dashboard_stats():
             level = log.get('level', 'UNKNOWN')
             level_distribution[level] = level_distribution.get(level, 0) + 1
 
+        # Use Redis stats for level distribution if available
+        if 'level_DEBUG' in api_stats:
+            level_distribution = {
+                'DEBUG': api_stats.get('level_DEBUG', 0),
+                'INFO': api_stats.get('level_INFO', 0),
+                'WARNING': api_stats.get('level_WARNING', 0),
+                'ERROR': api_stats.get('level_ERROR', 0)
+            }
+
         analytics = {
             'level_distribution': level_distribution,
-            'active_sources': api_stats.get('active_sources', []),
-            'ingestion_rate': api_stats.get('ingestion_rate', 0),
+            'active_sources': ['ssdev', 'ssdvr', 'ssmcp', 'ssrun'],  # Known sources
+            'ingestion_rate': 0,  # Redis doesn't track this yet
             'recent_logs': logs_list[:10]  # Last 10 logs for recent activity
         }
 
         # Calculate error rate
-        error_count = level_distribution.get('ERROR', 0) + level_distribution.get('WARN', 0)
+        error_count = level_distribution.get('ERROR', 0) + level_distribution.get('WARNING', 0)
         error_rate = (error_count / total_logs_today * 100) if total_logs_today > 0 else 0
 
         # Build comprehensive stats
         stats = {
             'total_logs_today': total_logs_today,
-            'ingestion_rate': api_stats.get('ingestion_rate', calculate_ingestion_rate(recent_logs_data)),
-            'error_rate': api_stats.get('error_rate', error_rate),
-            'disk_usage': api_stats.get('disk_usage', get_disk_usage()),
+            'ingestion_rate': 0,  # Redis doesn't track this yet
+            'error_rate': error_rate,
+            'disk_usage': 0,  # Redis doesn't track this
             'health_data': health_data,
-            'files_info': files_data,
             'analytics': analytics,
-            'api_stats': api_stats,  # Include raw API stats
+            'api_stats': api_stats,  # Include raw Redis stats
             'dashboard': {
-                'active_connections': len(socketio.server.manager.rooms.get('/', {})),
+                'active_connections': 0,  # SocketIO not used in Redis mode
                 'uptime': get_dashboard_uptime(),
-                'version': '2.0.0'
+                'version': '3.0.0-redis'
             }
         }
 
@@ -247,39 +251,38 @@ def get_dashboard_stats():
 
 @app.route('/api/dashboard/logs')
 def get_dashboard_logs():
-    """Get logs for dashboard display using enhanced logging API."""
+    """Get logs for dashboard display using Redis API."""
     try:
-        # Build enhanced API request
+        # Build Redis API request
         host = request.args.get('host', 'ssdev')
-        application = request.args.get('application', '')
+        app = request.args.get('application', 'sports-scheduler')
         component = request.args.get('component', '')
         level = request.args.get('level', '')
         search = request.args.get('search', '')
-        time_filter = request.args.get('time', 'last 1 hour')
+        refresh_id = request.args.get('refresh_id', '')
+        step = request.args.get('step', '')
         limit = request.args.get('limit', 50)
 
-        # Build API endpoint URL
-        if component:
-            endpoint = f"/logger/{component}/{host}"
-        elif application:
-            endpoint = f"/logger/host={host}"
-        else:
-            endpoint = f"/logger/search/{host}"
-
-        # Build parameters
+        # Build parameters for Redis API
         params = {
-            'limit': limit,
-            'time': time_filter
+            'limit': limit
         }
 
-        if application:
-            params['application'] = application
+        if app and app != 'all':
+            params['app'] = app
+        if component:
+            params['component'] = component
         if level:
             params['level'] = level
         if search:
             params['search'] = search
+        if refresh_id:
+            params['refresh_id'] = refresh_id
+        if step:
+            params['step'] = step
 
-        response = requests.get(f"{logging_server_url}{endpoint}", params=params, timeout=20)
+        # Use Redis API endpoint
+        response = requests.get(f"{logging_server_url}/logger/redis/{host}", params=params, timeout=20)
 
         if response.status_code == 200:
             return jsonify(response.json())
@@ -292,45 +295,41 @@ def get_dashboard_logs():
 
 @app.route('/api/dashboard/search')
 def search_dashboard_logs():
-    """Search logs using enhanced logging API."""
+    """Search logs using Redis API."""
     try:
         # Get search parameters
         query = request.args.get('q', '') or request.args.get('search', '')  # Support both 'q' and 'search' parameters
         host = request.args.get('host', 'ssdev')
-        pattern = request.args.get('pattern', '')
+        app = request.args.get('app', 'sports-scheduler')
         level = request.args.get('level', '')
         refresh_id = request.args.get('refresh_id', '')
         component = request.args.get('component', '')
-        step = request.args.get('step', '')  # Add step parameter support
-        time_filter = request.args.get('time', 'last 1 hour')
+        step = request.args.get('step', '')
         limit = request.args.get('limit', 100)
 
-        # Allow searches with just host, component, and time parameters
-        # For host-only searches, we'll search for all logs from that host
-        if not query and not pattern and not refresh_id and not component and not step:
-            # If no specific search terms, search for all logs from the host
-            query = '*'  # Use wildcard to get all logs
-
-        # Build enhanced search request
+        # Build Redis search request
         params = {
-            'limit': limit,
-            'time': time_filter
+            'limit': limit
         }
 
+        if app and app != 'all':
+            params['app'] = app
         if query:
             params['search'] = query
-        if pattern:
-            params['pattern'] = pattern
         if level:
             params['level'] = level
         if refresh_id:
-            params['search'] = refresh_id  # Use search parameter for refresh_id
+            params['refresh_id'] = refresh_id
         if component:
             params['component'] = component
         if step:
             params['step'] = step
 
-        response = requests.get(f"{logging_server_url}/logger/search/{host}", params=params, timeout=20)
+        # Use Redis search endpoint if we have a query, otherwise use regular endpoint
+        if query:
+            response = requests.get(f"{logging_server_url}/logger/search/redis/{host}", params=params, timeout=20)
+        else:
+            response = requests.get(f"{logging_server_url}/logger/redis/{host}", params=params, timeout=20)
 
         if response.status_code == 200:
             return jsonify(response.json())
@@ -386,14 +385,14 @@ def dashboard_health():
         health_status['system_info']['working_directory'] = os.getcwd()
         health_status['system_info']['logging_server_url'] = logging_server_url
 
-        # Test IPTV orchestrator endpoint
+        # Test Redis API endpoint
         try:
             if logging_server_url:
-                test_response = requests.get(f"{logging_server_url}/logger/search/ssdev",
-                                           params={'search': 'test', 'limit': 1}, timeout=3)
-                health_status['api_connectivity']['iptv_search'] = 'available' if test_response.status_code == 200 else 'error'
+                test_response = requests.get(f"{logging_server_url}/logger/redis/ssdev",
+                                           params={'limit': 1}, timeout=3)
+                health_status['api_connectivity']['redis_api'] = 'available' if test_response.status_code == 200 else 'error'
         except Exception as e:
-            health_status['api_connectivity']['iptv_search'] = f'error: {str(e)}'
+            health_status['api_connectivity']['redis_api'] = f'error: {str(e)}'
 
         return jsonify(health_status)
 
@@ -515,19 +514,17 @@ def get_iptv_orchestrator_statistics():
         }
 
 def get_period_statistics(time_filter):
-    """Get statistics for a specific time period."""
+    """Get statistics for a specific time period using Redis API."""
     try:
-        # Use the correct component for IPTV orchestrator statistics
+        # Use Redis API for IPTV orchestrator statistics
         search_params = {
-            'application': 'sports-scheduler',
+            'app': 'sports-scheduler',
             'component': 'iptv-orchestrator',
-            'time': time_filter,
-            'limit': 50  # Reduced limit for better performance
+            'limit': 100  # Get more logs for better analysis
         }
 
-        # Use the correct log API endpoint (port 8080)
-        log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/host=ssdev",
+        # Use Redis API endpoint
+        response = requests.get(f"{logging_server_url}/logger/redis/ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code != 200:
@@ -550,12 +547,9 @@ def get_period_statistics(time_filter):
         return {'runs': {}, 'recordings': {}}
 
 def analyze_orchestrator_runs(logs):
-    """Analyze logs to extract orchestrator run statistics."""
+    """Analyze logs to extract orchestrator run statistics from Redis logs."""
     try:
-        runs = {}
-        total_runs = 0
-        successful_runs = 0
-        failed_runs = 0
+        import re
 
         # Look for workflow completion indicators in IPTV orchestrator logs
         refresh_ids = set()
@@ -564,20 +558,26 @@ def analyze_orchestrator_runs(logs):
 
         for log in logs:
             message = log.get('message', '')
-            metadata = log.get('metadata', {})
 
-            # Extract refresh ID
-            refresh_id = metadata.get('refresh_id')
+            # Extract refresh ID from Redis log format
+            refresh_id = log.get('refresh_id')
+            if not refresh_id:
+                # Try to extract from message
+                refresh_match = re.search(r'Refresh-(\d+)', message)
+                if refresh_match:
+                    refresh_id = refresh_match.group(1)
+
             if refresh_id:
                 refresh_ids.add(refresh_id)
 
-                # Check for step completion/failure
-                step_status = metadata.get('step_status')
-                if step_status == 'completed' and metadata.get('step_number') == 8:
+                # Check for workflow completion/failure in message
+                if 'workflow completed successfully' in message.lower():
+                    completed_refreshes.add(refresh_id)
+                elif 'workflow failed' in message.lower() or 'failed' in message.lower():
+                    failed_refreshes.add(refresh_id)
+                elif log.get('step') == '8' and 'completed successfully' in message.lower():
                     # Step 8 completion means workflow completed
                     completed_refreshes.add(refresh_id)
-                elif step_status == 'failed':
-                    failed_refreshes.add(refresh_id)
 
         total_runs = len(refresh_ids)
         successful_runs = len(completed_refreshes)
@@ -598,7 +598,7 @@ def analyze_orchestrator_runs(logs):
         return {'total_runs': 0, 'successful_runs': 0, 'failed_runs': 0, 'success_rate': 0}
 
 def analyze_recording_statistics(logs):
-    """Analyze logs to extract recording statistics."""
+    """Analyze logs to extract recording statistics from Redis logs."""
     try:
         recordings = {
             'calendar_feeds_found': 0,
@@ -609,24 +609,27 @@ def analyze_recording_statistics(logs):
 
         for log in logs:
             message = log.get('message', '')
-            metadata = log.get('metadata', {})
+            step = log.get('step')
 
-            # Count successful step completions as "events processed"
-            if metadata.get('step_status') == 'completed':
-                step_number = metadata.get('step_number')
-                if step_number in [6, 7, 8]:  # Steps related to recording processing
+            # Count recording-related activities
+            if 'recording' in message.lower():
+                if 'scheduled' in message.lower() or 'success' in message.lower():
+                    recordings['scheduled_in_dvr'] += 1
+                elif 'failed' in message.lower() or 'error' in message.lower():
+                    recordings['failed_recordings'] += 1
+                else:
                     recordings['calendar_feeds_found'] += 1
 
-            # Count successful workflow completions as "scheduled in DVR"
-            if metadata.get('step_status') == 'completed' and metadata.get('step_number') == 8:
+            # Count step completions for recording-related steps
+            if step in ['6', '7', '8'] and 'completed successfully' in message.lower():
+                recordings['calendar_feeds_found'] += 1
+
+            # Count workflow completions as successful recordings
+            if step == '8' and 'completed successfully' in message.lower():
                 recordings['scheduled_in_dvr'] += 1
 
-            # Count failed steps as "failed recordings"
-            elif metadata.get('step_status') == 'failed':
-                recordings['failed_recordings'] += 1
-
         # Calculate recording success rate
-        total_attempts = recordings['calendar_feeds_found']
+        total_attempts = recordings['calendar_feeds_found'] + recordings['scheduled_in_dvr'] + recordings['failed_recordings']
         if total_attempts > 0:
             recordings['success_rate'] = (recordings['scheduled_in_dvr'] / total_attempts * 100)
 
