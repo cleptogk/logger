@@ -58,7 +58,51 @@ class RedisLogProcessor:
             worker.daemon = True
             worker.start()
             self.worker_threads.append(worker)
-        logger.info(f"Started {num_workers} worker threads")
+
+        # Start Redis queue processor
+        redis_worker = threading.Thread(target=self._redis_queue_processor)
+        redis_worker.daemon = True
+        redis_worker.start()
+        self.worker_threads.append(redis_worker)
+
+        logger.info(f"Started {num_workers} worker threads + 1 Redis queue processor")
+
+    def _redis_queue_processor(self):
+        """Process files from Redis queue and add to Python queue."""
+        logger.info("Redis queue processor started")
+        while self.running:
+            try:
+                # Block for up to 1 second waiting for a file from Redis queue
+                result = self.redis_client.brpop('log_files_queue', timeout=1)
+                if result:
+                    queue_name, file_path_bytes = result
+                    file_path = file_path_bytes.decode('utf-8')
+
+                    # Extract host from path
+                    path_parts = Path(file_path).parts
+                    host = 'unknown'
+                    for part in path_parts:
+                        if part in ['ssdev', 'ssdvr', 'ssmcp', 'ssrun', 'sslog']:
+                            host = part
+                            break
+
+                    # Create task and add to processing queue
+                    task = {
+                        'file_path': file_path,
+                        'host': host,
+                        'event_type': 'queued'
+                    }
+
+                    try:
+                        self.processing_queue.put_nowait(task)
+                        logger.info(f"Queued file for processing: {file_path} (host: {host})")
+                    except queue.Full:
+                        logger.warning(f"Processing queue full, re-queuing {file_path}")
+                        self.redis_client.lpush('log_files_queue', file_path)
+
+            except Exception as e:
+                logger.error(f"Redis queue processor error: {e}")
+                time.sleep(1)
 
     def _worker_loop(self, worker_id):
         """Worker thread loop for processing files."""
@@ -67,10 +111,10 @@ class RedisLogProcessor:
                 task = self.processing_queue.get(timeout=1)
                 if task is None:  # Shutdown signal
                     break
-                    
+
                 self._process_file_task(task, worker_id)
                 self.processing_queue.task_done()
-                
+
             except queue.Empty:
                 continue
             except Exception as e:
