@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Viewer - Centralized Logging</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            color: #ecf0f1;
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .controls {
+            background-color: #2c2c2c;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #444;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .control-group label {
+            font-size: 0.85rem;
+            color: #bbb;
+            font-weight: 500;
+        }
+
+        select, input, button {
+            padding: 0.5rem;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background-color: #3a3a3a;
+            color: #e0e0e0;
+            font-size: 0.9rem;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+
+        button {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #2980b9, #1f5f8b);
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #27ae60, #229954);
+        }
+
+        .refresh-btn:hover {
+            background: linear-gradient(135deg, #229954, #1e8449);
+        }
+
+        .stats {
+            background-color: #2c2c2c;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #444;
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #3498db;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #bbb;
+            text-transform: uppercase;
+        }
+
+        .logs-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 2rem;
+            max-height: calc(100vh - 300px);
+        }
+
+        .log-entry {
+            background-color: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 6px;
+            margin-bottom: 0.75rem;
+            padding: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .log-entry:hover {
+            background-color: #333;
+            border-color: #555;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .log-timestamp {
+            color: #95a5a6;
+            font-family: 'Courier New', monospace;
+        }
+
+        .log-level {
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .log-level.info { background-color: #3498db; color: white; }
+        .log-level.warning { background-color: #f39c12; color: white; }
+        .log-level.error { background-color: #e74c3c; color: white; }
+        .log-level.debug { background-color: #95a5a6; color: white; }
+
+        .log-message {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #ecf0f1;
+            word-wrap: break-word;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #95a5a6;
+        }
+
+        .error-message {
+            background-color: #e74c3c;
+            color: white;
+            padding: 1rem;
+            margin: 1rem 2rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .no-logs {
+            text-align: center;
+            padding: 3rem;
+            color: #95a5a6;
+            font-size: 1.1rem;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .stats {
+                justify-content: center;
+            }
+            
+            .header {
+                padding: 1rem;
+            }
+            
+            .logs-container {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 Log Viewer</h1>
+        <p>Real-time centralized logging dashboard</p>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="hostSelect">Host</label>
+            <select id="hostSelect">
+                <option value="ssdev">ssdev</option>
+                <option value="ssdvr">ssdvr</option>
+                <option value="ssmcp">ssmcp</option>
+                <option value="sslog">sslog</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="appSelect">Application</label>
+            <select id="appSelect">
+                <option value="sports-scheduler">Sports Scheduler</option>
+                <option value="all">All Applications</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="componentSelect">Component</label>
+            <select id="componentSelect">
+                <option value="application">Application</option>
+                <option value="iptv-orchestrator">IPTV Orchestrator</option>
+                <option value="epg-processor">EPG Processor</option>
+                <option value="automated-recording">Automated Recording</option>
+                <option value="calendar-feed">Calendar Feed</option>
+                <option value="recording-name">Recording Name</option>
+                <option value="">All Components</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="levelSelect">Level</label>
+            <select id="levelSelect">
+                <option value="">All Levels</option>
+                <option value="DEBUG">Debug</option>
+                <option value="INFO">Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="ERROR">Error</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="limitSelect">Limit</label>
+            <select id="limitSelect">
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="searchInput">Search</label>
+            <input type="text" id="searchInput" placeholder="Search logs...">
+        </div>
+
+        <div class="control-group">
+            <label>&nbsp;</label>
+            <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-item">
+            <div class="stat-value" id="totalLogs">0</div>
+            <div class="stat-label">Total Logs</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="errorCount">0</div>
+            <div class="stat-label">Errors</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="warningCount">0</div>
+            <div class="stat-label">Warnings</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="responseTime">0ms</div>
+            <div class="stat-label">Response Time</div>
+        </div>
+    </div>
+
+    <div class="logs-container" id="logsContainer">
+        <div class="loading">Loading logs...</div>
+    </div>
+
+    <script>
+        class LogViewer {
+            constructor() {
+                this.isRefreshing = false;
+                this.autoRefreshInterval = null;
+                this.initializeEventListeners();
+                this.refreshLogs();
+            }
+
+            initializeEventListeners() {
+                document.getElementById('refreshBtn').addEventListener('click', () => this.refreshLogs());
+                document.getElementById('searchInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.refreshLogs();
+                });
+                
+                // Auto-refresh on filter changes
+                ['hostSelect', 'appSelect', 'componentSelect', 'levelSelect', 'limitSelect'].forEach(id => {
+                    document.getElementById(id).addEventListener('change', () => this.refreshLogs());
+                });
+            }
+
+            async refreshLogs() {
+                if (this.isRefreshing) return;
+                
+                this.isRefreshing = true;
+                this.showLoading();
+                
+                try {
+                    const params = this.buildQueryParams();
+                    const startTime = Date.now();
+                    
+                    const response = await fetch(`/api/dashboard/logs?${params.query}`);
+                    const data = await response.json();
+                    
+                    const responseTime = Date.now() - startTime;
+                    
+                    if (response.ok) {
+                        this.displayLogs(data.logs || []);
+                        this.updateStats(data, responseTime);
+                    } else {
+                        this.showError(data.error || 'Failed to fetch logs');
+                    }
+                } catch (error) {
+                    this.showError(`Network error: ${error.message}`);
+                } finally {
+                    this.isRefreshing = false;
+                }
+            }
+
+            buildQueryParams() {
+                const host = document.getElementById('hostSelect').value;
+                const app = document.getElementById('appSelect').value;
+                const component = document.getElementById('componentSelect').value;
+                const level = document.getElementById('levelSelect').value;
+                const limit = document.getElementById('limitSelect').value;
+                const search = document.getElementById('searchInput').value;
+                
+                const params = new URLSearchParams();
+                params.append('host', host);
+                if (app !== 'all') params.append('application', app);
+                if (component) params.append('component', component);
+                if (level) params.append('level', level);
+                if (search) params.append('search', search);
+                params.append('limit', limit);
+                
+                return {
+                    host: host,
+                    query: params.toString()
+                };
+            }
+
+            displayLogs(logs) {
+                const container = document.getElementById('logsContainer');
+                
+                if (!logs || logs.length === 0) {
+                    container.innerHTML = '<div class="no-logs">No logs found matching the current filters.</div>';
+                    return;
+                }
+                
+                container.innerHTML = logs.map(log => this.createLogEntryHTML(log)).join('');
+            }
+
+            createLogEntryHTML(log) {
+                const level = log.level || 'INFO';
+                const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleString() : 'Unknown time';
+                const message = this.escapeHtml(log.message || 'No message');
+                
+                return `
+                    <div class="log-entry">
+                        <div class="log-header">
+                            <span class="log-timestamp">${timestamp}</span>
+                            <span class="log-level ${level.toLowerCase()}">${level}</span>
+                        </div>
+                        <div class="log-message">${message}</div>
+                    </div>
+                `;
+            }
+
+            updateStats(data, responseTime) {
+                document.getElementById('totalLogs').textContent = data.total || 0;
+                document.getElementById('responseTime').textContent = `${responseTime}ms`;
+                
+                const logs = data.logs || [];
+                const errorCount = logs.filter(log => (log.level || 'INFO') === 'ERROR').length;
+                const warningCount = logs.filter(log => (log.level || 'INFO') === 'WARNING').length;
+                
+                document.getElementById('errorCount').textContent = errorCount;
+                document.getElementById('warningCount').textContent = warningCount;
+            }
+
+            showLoading() {
+                document.getElementById('logsContainer').innerHTML = '<div class="loading">Loading logs...</div>';
+            }
+
+            showError(message) {
+                document.getElementById('logsContainer').innerHTML = `<div class="error-message">Error: ${this.escapeHtml(message)}</div>`;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // Initialize the log viewer when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new LogViewer();
+        });
+    </script>
+</body>
+</html>

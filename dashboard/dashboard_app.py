@@ -171,7 +171,7 @@ def dashboard():
 @app.route('/logs')
 def log_viewer():
     """Log viewer page."""
-    return render_template('enhanced_dashboard.html')
+    return render_template('log_viewer.html')
 
 @app.route('/metrics')
 def metrics_page():
