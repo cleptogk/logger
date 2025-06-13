@@ -23,8 +23,8 @@ Restart=always
 RestartSec=10
 
 # Resource limits for background processing
-MemoryMax=1G
-MemoryHigh=800M
+MemoryMax=2G
+MemoryHigh=1600M
 CPUQuota=200%
 TasksMax=512
 LimitNPROC=1024
