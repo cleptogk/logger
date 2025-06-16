@@ -79,10 +79,17 @@ class RedisLogAPI:
             # Get log entry keys from sorted set
             if '*' in base_key:
                 # Handle wildcard queries - use sorted sets instead of scanning individual keys
-                log_keys = self._get_wildcard_logs_from_sorted_sets(base_key, start_score, end_score, limit + offset)
+                log_keys = self._get_wildcard_logs_from_sorted_sets(base_key, start_score, end_score, limit + offset, level, refresh_id, step)
+            elif level or refresh_id or step:
+                # Use filtered sorted set (level, refresh_id, or step filtering)
+                sorted_set_key = query_key  # query_key has the filter applied
+                log_keys = self.redis_client.zrevrangebyscore(
+                    sorted_set_key, end_score, start_score,
+                    start=offset, num=limit
+                )
             else:
                 # Direct sorted set query (most efficient)
-                sorted_set_key = base_key  # base_key is already the correct sorted set key
+                sorted_set_key = base_key  # base_key is the main component sorted set
                 log_keys = self.redis_client.zrevrangebyscore(
                     sorted_set_key, end_score, start_score,
                     start=offset, num=limit
@@ -178,7 +185,7 @@ class RedisLogAPI:
 
         return [key for key, score in all_keys[:limit]]
 
-    def _get_wildcard_logs_from_sorted_sets(self, pattern: str, start_score, end_score, limit: int) -> List[str]:
+    def _get_wildcard_logs_from_sorted_sets(self, pattern: str, start_score, end_score, limit: int, level: str = None, refresh_id: str = None, step: str = None) -> List[str]:
         """Get logs from sorted sets - much more efficient than scanning individual keys."""
         all_entries = []
 
@@ -187,9 +194,24 @@ class RedisLogAPI:
 
         # Find all matching sorted sets
         for sorted_set_key in self.redis_client.scan_iter(match=sorted_set_pattern):
-            # Skip level, refresh, step indexes
-            if ':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key:
-                continue
+            # For wildcard queries, we need to check both main sorted sets and filtered ones
+            is_main_set = not (':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key)
+            is_filtered_set = ':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key
+
+            # If we have filters, only use filtered sets that match
+            if level or refresh_id or step:
+                if is_main_set:
+                    continue  # Skip main sets when filtering
+                if level and f':level:{level}' not in sorted_set_key:
+                    continue  # Skip if level doesn't match
+                if refresh_id and f':refresh:{refresh_id}' not in sorted_set_key:
+                    continue  # Skip if refresh_id doesn't match
+                if step and f':step:{step}' not in sorted_set_key:
+                    continue  # Skip if step doesn't match
+            else:
+                # No filters, only use main sets
+                if is_filtered_set:
+                    continue
 
             # Get log entries from this sorted set (JSON format)
             log_entries = self.redis_client.zrevrangebyscore(
@@ -228,7 +250,7 @@ class RedisLogAPI:
         else:
             return self.redis_client.hgetall(stats_key)
 
-    def search_logs(self, host: str, query: str, limit: int = 100) -> Dict:
+    def search_logs(self, host: str, query: str, limit: int = 100, level: str = None, refresh_id: str = None, step: str = None) -> Dict:
         """Full-text search across logs using sorted sets for better performance."""
         search_results = []
 
@@ -237,8 +259,24 @@ class RedisLogAPI:
 
         # Get recent logs from all sorted sets
         for sorted_set_key in self.redis_client.scan_iter(match=sorted_set_pattern):
-            if ':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key:
-                continue
+            # Apply filtering logic similar to _get_wildcard_logs_from_sorted_sets
+            is_main_set = not (':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key)
+            is_filtered_set = ':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key
+
+            # If we have filters, only use filtered sets that match
+            if level or refresh_id or step:
+                if is_main_set:
+                    continue  # Skip main sets when filtering
+                if level and f':level:{level}' not in sorted_set_key:
+                    continue  # Skip if level doesn't match
+                if refresh_id and f':refresh:{refresh_id}' not in sorted_set_key:
+                    continue  # Skip if refresh_id doesn't match
+                if step and f':step:{step}' not in sorted_set_key:
+                    continue  # Skip if step doesn't match
+            else:
+                # No filters, only use main sets
+                if is_filtered_set:
+                    continue
 
             # Get recent log entries from this sorted set (JSON format)
             recent_log_entries = self.redis_client.zrevrange(sorted_set_key, 0, 100)
@@ -384,11 +422,14 @@ def search_host_logs_redis(host):
     """Search logs for host using Redis backend."""
     query = request.args.get('search', '')
     limit = min(int(request.args.get('limit', 100)), 500)
-    
+    level = request.args.get('level')
+    refresh_id = request.args.get('refresh_id')
+    step = request.args.get('step')
+
     if not query:
         return jsonify({'error': 'Search query required'}), 400
-    
-    result = redis_api.search_logs(host, query, limit)
+
+    result = redis_api.search_logs(host, query, limit, level, refresh_id, step)
     return jsonify(result)
 
 @app.route('/logger/stats/redis/<host>')
