@@ -69,11 +69,11 @@ class RedisLogAPI:
         if end_time:
             end_score = int(end_time.timestamp())
         
-        # Temporarily disable cache to debug the issue
-        # cache_key = self._generate_cache_key(query_key, start_score, end_score, limit, offset)
-        # cached_result = self.redis_client.get(f"cache:{cache_key}")
-        # if cached_result:
-        #     return json.loads(cached_result)
+        # Check query cache first
+        cache_key = self._generate_cache_key(query_key, start_score, end_score, limit, offset)
+        cached_result = self.redis_client.get(f"cache:{cache_key}")
+        if cached_result:
+            return json.loads(cached_result)
         
         try:
             # Get log entry keys from sorted set
@@ -122,13 +122,15 @@ class RedisLogAPI:
                 'source': 'redis_cache'
             }
             
-            # Temporarily disable caching to debug the issue
-            # self.redis_client.setex(f"cache:{cache_key}", self.query_cache_ttl, json.dumps(result))
+            # Cache the result
+            self.redis_client.setex(f"cache:{cache_key}", self.query_cache_ttl, json.dumps(result))
             
             return result
             
         except Exception as e:
-            print(f"Redis query error: {e}")
+            # Log the error properly
+            import traceback
+            traceback.print_exc()
             return {'logs': [], 'total': 0, 'error': str(e)}
 
     def _get_wildcard_logs(self, pattern: str, start_score, end_score, limit: int) -> List[str]:
@@ -384,8 +386,8 @@ def health():
 @app.route('/logger/redis/<host>')
 def get_host_logs_redis(host):
     """Get logs for host using Redis backend."""
-    # Parse query parameters
-    app = request.args.get('app', 'all')
+    # Parse query parameters - FIXED: Renamed 'app' to 'app_param' to avoid conflict with Flask app
+    app_param = request.args.get('app', 'all')
     component = request.args.get('component')
     level = request.args.get('level')
     refresh_id = request.args.get('refresh_id')
@@ -394,13 +396,6 @@ def get_host_logs_redis(host):
     limit = min(int(request.args.get('limit', 100)), 500)
     offset = int(request.args.get('offset', 0))
 
-    # DEBUG: Print all parameters
-    print(f"HTTP DEBUG - host: {host}")
-    print(f"HTTP DEBUG - app: '{app}' (raw: {request.args.get('app')})")
-    print(f"HTTP DEBUG - component: '{component}'")
-    print(f"HTTP DEBUG - level: '{level}'")
-    print(f"HTTP DEBUG - limit: {limit}, offset: {offset}")
-
     # Parse time filters
     start_time = None
     end_time = None
@@ -408,10 +403,8 @@ def get_host_logs_redis(host):
     if time_filter:
         start_time, end_time = parse_time_filter(time_filter)
 
-    # DEBUG: Print processed parameters
-    processed_app = app if app != 'all' else None
-    print(f"HTTP DEBUG - processed_app: '{processed_app}'")
-    print(f"HTTP DEBUG - calling get_logs with: host={host}, app={processed_app}, component={component}")
+    # Process app parameter
+    processed_app = app_param if app_param != 'all' else None
 
     try:
         result = redis_api.get_logs(
@@ -428,16 +421,14 @@ def get_host_logs_redis(host):
             offset=offset
         )
 
-        # DEBUG: Print result
-        print(f"HTTP DEBUG - result: {len(result.get('logs', []))} logs, total: {result.get('total', 0)}")
-
         return jsonify(result)
 
     except Exception as e:
-        print(f"HTTP DEBUG - Exception: {e}")
+        # Log the error properly
         import traceback
-        print(f"HTTP DEBUG - Traceback: {traceback.format_exc()}")
-        return jsonify({'error': str(e), 'logs': [], 'total': 0})
+        error_msg = f"Error in get_host_logs_redis: {e}"
+        traceback.print_exc()
+        return jsonify({'error': error_msg, 'logs': [], 'total': 0})
 
 @app.route('/logger/search/redis/<host>')
 def search_host_logs_redis(host):
