@@ -69,11 +69,11 @@ class RedisLogAPI:
         if end_time:
             end_score = int(end_time.timestamp())
         
-        # Check query cache first
-        cache_key = self._generate_cache_key(query_key, start_score, end_score, limit, offset)
-        cached_result = self.redis_client.get(f"cache:{cache_key}")
-        if cached_result:
-            return json.loads(cached_result)
+        # Temporarily disable cache to debug the issue
+        # cache_key = self._generate_cache_key(query_key, start_score, end_score, limit, offset)
+        # cached_result = self.redis_client.get(f"cache:{cache_key}")
+        # if cached_result:
+        #     return json.loads(cached_result)
         
         try:
             # Get log entry keys from sorted set
@@ -122,8 +122,8 @@ class RedisLogAPI:
                 'source': 'redis_cache'
             }
             
-            # Cache the result
-            self.redis_client.setex(f"cache:{cache_key}", self.query_cache_ttl, json.dumps(result))
+            # Temporarily disable caching to debug the issue
+            # self.redis_client.setex(f"cache:{cache_key}", self.query_cache_ttl, json.dumps(result))
             
             return result
             
