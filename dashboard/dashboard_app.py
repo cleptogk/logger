@@ -525,9 +525,8 @@ def get_period_statistics(time_filter):
             'limit': 50  # Reduced limit for better performance
         }
 
-        # Use the correct log API endpoint (port 8080)
-        log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/host=ssdev",
+        # Use the Redis API endpoint (port 8082)
+        response = requests.get(f"{logging_server_url}/logger/redis/ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code != 200:
@@ -648,9 +647,8 @@ def get_error_analysis():
             'limit': 100  # Get more logs to analyze for error patterns
         }
 
-        # Use the correct log API endpoint (port 8080)
-        log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/host=ssdev",
+        # Use the Redis API endpoint (port 8082)
+        response = requests.get(f"{logging_server_url}/logger/redis/ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code != 200:
@@ -718,9 +716,8 @@ def get_recent_failures():
             'limit': 50
         }
 
-        # Use the correct log API endpoint (port 8080)
-        log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/host=ssdev",
+        # Use the Redis API endpoint (port 8082)
+        response = requests.get(f"{logging_server_url}/logger/redis/ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code != 200:
@@ -759,9 +756,8 @@ def get_missed_recordings_stats():
             'limit': 100
         }
 
-        # Use the correct log API endpoint (port 8080)
-        log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/host=ssdev",
+        # Use the Redis API endpoint (port 8082)
+        response = requests.get(f"{logging_server_url}/logger/redis/ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code != 200:
@@ -809,9 +805,8 @@ def get_current_workflows():
             'limit': 100
         }
 
-        # Use the correct log API endpoint (port 8080)
-        log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+        # Use the Redis API endpoint (port 8082)
+        response = requests.get(f"{logging_server_url}/logger/search/redis/ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code == 200:
@@ -836,9 +831,8 @@ def get_latest_recording_info():
             'limit': 50
         }
 
-        # Use the correct log API endpoint (port 8080)
-        log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+        # Use the Redis API endpoint (port 8082)
+        response = requests.get(f"{logging_server_url}/logger/search/redis/ssdev",
                               params=search_params, timeout=30)
 
         if response.status_code != 200:
@@ -929,9 +923,8 @@ def get_workflow_details(refresh_id):
     try:
         # Use the same search pattern as the main IPTV orchestrator endpoint
         # but filter for the specific refresh ID
-        # Use the correct log API endpoint (port 8080)
-        log_api_url = logging_server_url.replace(':8081', ':8080')
-        response = requests.get(f"{log_api_url}/logger/search/ssdev",
+        # Use the Redis API endpoint (port 8082)
+        response = requests.get(f"{logging_server_url}/logger/search/redis/ssdev",
                               params={'search': refresh_id, 'component': 'iptv-orchestrator',
                                      'time': 'today', 'limit': 100}, timeout=30)
 
