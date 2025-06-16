@@ -78,12 +78,13 @@ class RedisLogAPI:
         try:
             # Get log entry keys from sorted set
             if '*' in query_key:
-                # Handle wildcard queries
-                log_keys = self._get_wildcard_logs(base_key, start_score, end_score, limit + offset)
+                # Handle wildcard queries - use sorted sets instead of scanning individual keys
+                log_keys = self._get_wildcard_logs_from_sorted_sets(base_key, start_score, end_score, limit + offset)
             else:
-                # Direct key query
+                # Direct key query using sorted sets (much more efficient)
+                sorted_set_key = f"logs:{host}:{app}:{component}"
                 log_keys = self.redis_client.zrevrangebyscore(
-                    query_key, end_score, start_score,
+                    sorted_set_key, end_score, start_score,
                     start=offset, num=limit
                 )
             
@@ -121,7 +122,11 @@ class RedisLogAPI:
         """Handle wildcard queries by scanning individual log keys efficiently."""
         all_keys = []
         count = 0
-        max_scan = limit * 10  # Limit scanning to avoid timeouts
+        # Increase scan limit to ensure we find all components, especially for component discovery
+        max_scan = max(limit * 50, 2000)  # Scan more keys to find all components
+
+        # Track components found for better distribution
+        components_found = set()
 
         # Scan for individual log entries directly but limit the scan
         for log_key in self.redis_client.scan_iter(match=pattern):
@@ -133,10 +138,16 @@ class RedisLogAPI:
 
             count += 1
 
+            # Extract component from key for diversity
+            key_parts = log_key.split(':')
+            component = key_parts[3] if len(key_parts) >= 4 else 'unknown'
+            components_found.add(component)
+
             # For efficiency, if no time filter is specified, just take recent keys
             if start_score == 0 and end_score == '+inf':
                 all_keys.append((log_key, 0))
-                if len(all_keys) >= limit:
+                # Continue scanning to find all components, don't break early
+                if len(all_keys) >= limit and len(components_found) >= 5:
                     break
             else:
                 # Only check timestamp if time filtering is needed
@@ -160,6 +171,32 @@ class RedisLogAPI:
             all_keys.sort(key=lambda x: x[1], reverse=True)
 
         return [key for key, score in all_keys[:limit]]
+
+    def _get_wildcard_logs_from_sorted_sets(self, pattern: str, start_score, end_score, limit: int) -> List[str]:
+        """Get logs from sorted sets - much more efficient than scanning individual keys."""
+        all_keys = []
+
+        # Convert pattern to sorted set key pattern
+        # From: log:host:app:* to logs:host:app:*
+        sorted_set_pattern = pattern.replace('log:', 'logs:', 1)
+
+        # Find all matching sorted sets
+        for sorted_set_key in self.redis_client.scan_iter(match=sorted_set_pattern):
+            # Get logs from this sorted set
+            log_keys = self.redis_client.zrevrangebyscore(
+                sorted_set_key, end_score, start_score,
+                start=0, num=limit
+            )
+            all_keys.extend(log_keys)
+
+            # Stop if we have enough keys
+            if len(all_keys) >= limit:
+                break
+
+        # Sort all keys by timestamp (newest first) and limit
+        # Keys already contain timestamp, so we can sort by key name
+        all_keys.sort(reverse=True)
+        return all_keys[:limit]
 
     def _generate_cache_key(self, query_key: str, start_score, end_score, limit: int, offset: int) -> str:
         """Generate cache key for query."""
@@ -185,26 +222,32 @@ class RedisLogAPI:
             return self.redis_client.hgetall(stats_key)
 
     def search_logs(self, host: str, query: str, limit: int = 100) -> Dict:
-        """Full-text search across logs."""
-        # For now, implement basic search
-        # In production, consider Redis Search module for advanced full-text search
-
+        """Full-text search across logs using sorted sets for better performance."""
         search_results = []
-        pattern = f"log:{host}:*"  # Fixed: was "logs:" should be "log:"
 
-        # Scan for individual log entries, not index keys
-        for log_key in self.redis_client.scan_iter(match=pattern):
-            if ':level:' in log_key or ':refresh:' in log_key or ':step:' in log_key:
+        # Search across sorted sets instead of individual keys
+        sorted_set_pattern = f"logs:{host}:*"
+
+        # Get recent logs from all sorted sets
+        for sorted_set_key in self.redis_client.scan_iter(match=sorted_set_pattern):
+            if ':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key:
                 continue
 
-            log_data = self.redis_client.hgetall(log_key)
-            if log_data and query.lower() in log_data.get('message', '').lower():
-                # Enrich log data with application, component, and host from key
-                enriched_log = self._enrich_log_data(log_data, log_key)
-                search_results.append(enriched_log)
+            # Get recent log keys from this sorted set
+            recent_log_keys = self.redis_client.zrevrange(sorted_set_key, 0, 100)
 
-                if len(search_results) >= limit:
-                    break
+            for log_key in recent_log_keys:
+                log_data = self.redis_client.hgetall(log_key)
+                if log_data and query.lower() in log_data.get('message', '').lower():
+                    # Enrich log data with application, component, and host from key
+                    enriched_log = self._enrich_log_data(log_data, log_key)
+                    search_results.append(enriched_log)
+
+                    if len(search_results) >= limit:
+                        break
+
+            if len(search_results) >= limit:
+                break
 
         # Sort by timestamp (newest first)
         search_results.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
