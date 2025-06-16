@@ -236,9 +236,10 @@ class RedisLogAPI:
         content = f"{query_key}:{start_score}:{end_score}:{limit}:{offset}:{normalized_search}"
         cache_key = hashlib.md5(content.encode()).hexdigest()
 
-        # DEBUG: Print cache key generation
-        print(f"CACHE DEBUG - Content: {content}")
-        print(f"CACHE DEBUG - Key: {cache_key}")
+        # DEBUG: Write cache key generation to file
+        with open('/tmp/cache_debug.log', 'a') as f:
+            f.write(f"CACHE DEBUG - Content: {content}\n")
+            f.write(f"CACHE DEBUG - Key: {cache_key}\n")
 
         return cache_key
 
@@ -415,12 +416,13 @@ def get_host_logs_redis(host):
     processed_app = app_param if app_param != 'all' else None
 
     try:
-        # DEBUG: Print parameters for cache key comparison
-        print(f"HTTP DEBUG - Parameters:")
-        print(f"  host={host}, app={processed_app}, component={component}")
-        print(f"  level={level}, refresh_id={refresh_id}, step={step}")
-        print(f"  start_time={start_time}, end_time={end_time}")
-        print(f"  search_query={search}, limit={limit}, offset={offset}")
+        # DEBUG: Write parameters to file for cache key comparison
+        with open('/tmp/cache_debug.log', 'a') as f:
+            f.write(f"HTTP DEBUG - Parameters:\n")
+            f.write(f"  host={host}, app={processed_app}, component={component}\n")
+            f.write(f"  level={level}, refresh_id={refresh_id}, step={step}\n")
+            f.write(f"  start_time={start_time}, end_time={end_time}\n")
+            f.write(f"  search_query={search}, limit={limit}, offset={offset}\n")
 
         result = redis_api.get_logs(
             host=host,
