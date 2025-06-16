@@ -45,7 +45,7 @@ class RedisLogAPI:
         
         # Build Redis key pattern - Fixed: was "logs:" should be "log:"
         if app and component:
-            base_key = f"log:{host}:{app}:{component}"
+            base_key = f"log:{host}:{app}:{component}:*"  # Fixed: Add wildcard for component filtering
         elif app:
             base_key = f"log:{host}:{app}:*"
         else:
