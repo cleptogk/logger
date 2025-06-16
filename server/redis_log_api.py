@@ -236,11 +236,6 @@ class RedisLogAPI:
         content = f"{query_key}:{start_score}:{end_score}:{limit}:{offset}:{normalized_search}"
         cache_key = hashlib.md5(content.encode()).hexdigest()
 
-        # DEBUG: Write cache key generation to file
-        with open('/tmp/cache_debug.log', 'a') as f:
-            f.write(f"CACHE DEBUG - Content: {content}\n")
-            f.write(f"CACHE DEBUG - Key: {cache_key}\n")
-
         return cache_key
 
     def get_stats(self, host: str, app: str = None) -> Dict:
@@ -412,18 +407,13 @@ def get_host_logs_redis(host):
     if time_filter:
         start_time, end_time = parse_time_filter(time_filter)
 
-    # Process app parameter
+    # Process parameters to match direct API call exactly
     processed_app = app_param if app_param != 'all' else None
 
-    try:
-        # DEBUG: Write parameters to file for cache key comparison
-        with open('/tmp/cache_debug.log', 'a') as f:
-            f.write(f"HTTP DEBUG - Parameters:\n")
-            f.write(f"  host={host}, app={processed_app}, component={component}\n")
-            f.write(f"  level={level}, refresh_id={refresh_id}, step={step}\n")
-            f.write(f"  start_time={start_time}, end_time={end_time}\n")
-            f.write(f"  search_query={search}, limit={limit}, offset={offset}\n")
+    # Ensure search_query is None (not empty string) to match direct API calls
+    processed_search = None if not search else search
 
+    try:
         result = redis_api.get_logs(
             host=host,
             app=processed_app,
@@ -433,7 +423,7 @@ def get_host_logs_redis(host):
             step=step,
             start_time=start_time,
             end_time=end_time,
-            search_query=search,
+            search_query=processed_search,
             limit=limit,
             offset=offset
         )
