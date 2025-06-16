@@ -234,7 +234,13 @@ class RedisLogAPI:
         # Normalize search_query to ensure consistent cache keys
         normalized_search = search_query if search_query else ""
         content = f"{query_key}:{start_score}:{end_score}:{limit}:{offset}:{normalized_search}"
-        return hashlib.md5(content.encode()).hexdigest()
+        cache_key = hashlib.md5(content.encode()).hexdigest()
+
+        # DEBUG: Print cache key generation
+        print(f"CACHE DEBUG - Content: {content}")
+        print(f"CACHE DEBUG - Key: {cache_key}")
+
+        return cache_key
 
     def get_stats(self, host: str, app: str = None) -> Dict:
         """Get statistics from Redis."""
@@ -409,6 +415,13 @@ def get_host_logs_redis(host):
     processed_app = app_param if app_param != 'all' else None
 
     try:
+        # DEBUG: Print parameters for cache key comparison
+        print(f"HTTP DEBUG - Parameters:")
+        print(f"  host={host}, app={processed_app}, component={component}")
+        print(f"  level={level}, refresh_id={refresh_id}, step={step}")
+        print(f"  start_time={start_time}, end_time={end_time}")
+        print(f"  search_query={search}, limit={limit}, offset={offset}")
+
         result = redis_api.get_logs(
             host=host,
             app=processed_app,
