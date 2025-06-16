@@ -70,7 +70,7 @@ class RedisLogAPI:
             end_score = int(end_time.timestamp())
         
         # Check query cache first
-        cache_key = self._generate_cache_key(query_key, start_score, end_score, limit, offset)
+        cache_key = self._generate_cache_key(query_key, start_score, end_score, limit, offset, search_query)
         cached_result = self.redis_client.get(f"cache:{cache_key}")
         if cached_result:
             return json.loads(cached_result)
@@ -229,9 +229,11 @@ class RedisLogAPI:
         # Return the JSON entries (already sorted by Redis)
         return all_entries[:limit]
 
-    def _generate_cache_key(self, query_key: str, start_score, end_score, limit: int, offset: int) -> str:
-        """Generate cache key for query."""
-        content = f"{query_key}:{start_score}:{end_score}:{limit}:{offset}"
+    def _generate_cache_key(self, query_key: str, start_score, end_score, limit: int, offset: int, search_query: str = None) -> str:
+        """Generate cache key for query - includes search_query for proper cache differentiation."""
+        # Normalize search_query to ensure consistent cache keys
+        normalized_search = search_query if search_query else ""
+        content = f"{query_key}:{start_score}:{end_score}:{limit}:{offset}:{normalized_search}"
         return hashlib.md5(content.encode()).hexdigest()
 
     def get_stats(self, host: str, app: str = None) -> Dict:
