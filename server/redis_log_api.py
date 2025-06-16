@@ -393,29 +393,51 @@ def get_host_logs_redis(host):
     search = request.args.get('search')
     limit = min(int(request.args.get('limit', 100)), 500)
     offset = int(request.args.get('offset', 0))
-    
+
+    # DEBUG: Print all parameters
+    print(f"HTTP DEBUG - host: {host}")
+    print(f"HTTP DEBUG - app: '{app}' (raw: {request.args.get('app')})")
+    print(f"HTTP DEBUG - component: '{component}'")
+    print(f"HTTP DEBUG - level: '{level}'")
+    print(f"HTTP DEBUG - limit: {limit}, offset: {offset}")
+
     # Parse time filters
     start_time = None
     end_time = None
     time_filter = request.args.get('time')
     if time_filter:
         start_time, end_time = parse_time_filter(time_filter)
-    
-    result = redis_api.get_logs(
-        host=host,
-        app=app if app != 'all' else None,
-        component=component,
-        level=level,
-        refresh_id=refresh_id,
-        step=step,
-        start_time=start_time,
-        end_time=end_time,
-        search_query=search,
-        limit=limit,
-        offset=offset
-    )
-    
-    return jsonify(result)
+
+    # DEBUG: Print processed parameters
+    processed_app = app if app != 'all' else None
+    print(f"HTTP DEBUG - processed_app: '{processed_app}'")
+    print(f"HTTP DEBUG - calling get_logs with: host={host}, app={processed_app}, component={component}")
+
+    try:
+        result = redis_api.get_logs(
+            host=host,
+            app=processed_app,
+            component=component,
+            level=level,
+            refresh_id=refresh_id,
+            step=step,
+            start_time=start_time,
+            end_time=end_time,
+            search_query=search,
+            limit=limit,
+            offset=offset
+        )
+
+        # DEBUG: Print result
+        print(f"HTTP DEBUG - result: {len(result.get('logs', []))} logs, total: {result.get('total', 0)}")
+
+        return jsonify(result)
+
+    except Exception as e:
+        print(f"HTTP DEBUG - Exception: {e}")
+        import traceback
+        print(f"HTTP DEBUG - Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e), 'logs': [], 'total': 0})
 
 @app.route('/logger/search/redis/<host>')
 def search_host_logs_redis(host):
