@@ -90,7 +90,7 @@ class RedisLogAPI:
             
             # Fetch log entries from sorted sets (log_keys now contains JSON strings)
             logs = []
-            for log_json in log_keys[offset:offset + limit]:
+            for log_json in log_keys:  # log_keys already has offset/limit applied from Redis query
                 try:
                     # Parse JSON log data from sorted set
                     log_data = json.loads(log_json)
