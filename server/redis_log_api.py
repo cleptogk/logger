@@ -88,17 +88,23 @@ class RedisLogAPI:
                     start=offset, num=limit
                 )
             
-            # Fetch log entries
+            # Fetch log entries from sorted sets (log_keys now contains JSON strings)
             logs = []
-            for key in log_keys[offset:offset + limit]:
-                log_data = self.redis_client.hgetall(key)
-                if log_data:
+            for log_json in log_keys[offset:offset + limit]:
+                try:
+                    # Parse JSON log data from sorted set
+                    log_data = json.loads(log_json)
+
                     # Apply search filter if specified
                     if search_query and search_query.lower() not in log_data.get('message', '').lower():
                         continue
-                    # Enrich log data with application, component, and host from key
-                    enriched_log = self._enrich_log_data(log_data, key)
+
+                    # Enrich log data with application, component, and host
+                    enriched_log = self._enrich_log_data_from_sorted_set(log_data, host, app, component)
                     logs.append(enriched_log)
+                except json.JSONDecodeError:
+                    # Skip invalid JSON entries
+                    continue
             
             result = {
                 'logs': logs,
@@ -174,7 +180,7 @@ class RedisLogAPI:
 
     def _get_wildcard_logs_from_sorted_sets(self, pattern: str, start_score, end_score, limit: int) -> List[str]:
         """Get logs from sorted sets - much more efficient than scanning individual keys."""
-        all_keys = []
+        all_entries = []
 
         # Convert pattern to sorted set key pattern
         # From: log:host:app:* to logs:host:app:*
@@ -182,21 +188,23 @@ class RedisLogAPI:
 
         # Find all matching sorted sets
         for sorted_set_key in self.redis_client.scan_iter(match=sorted_set_pattern):
-            # Get logs from this sorted set
-            log_keys = self.redis_client.zrevrangebyscore(
+            # Skip level, refresh, step indexes
+            if ':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key:
+                continue
+
+            # Get log entries from this sorted set (JSON format)
+            log_entries = self.redis_client.zrevrangebyscore(
                 sorted_set_key, end_score, start_score,
                 start=0, num=limit
             )
-            all_keys.extend(log_keys)
+            all_entries.extend(log_entries)
 
-            # Stop if we have enough keys
-            if len(all_keys) >= limit:
+            # Stop if we have enough entries
+            if len(all_entries) >= limit:
                 break
 
-        # Sort all keys by timestamp (newest first) and limit
-        # Keys already contain timestamp, so we can sort by key name
-        all_keys.sort(reverse=True)
-        return all_keys[:limit]
+        # Return the JSON entries (already sorted by Redis)
+        return all_entries[:limit]
 
     def _generate_cache_key(self, query_key: str, start_score, end_score, limit: int, offset: int) -> str:
         """Generate cache key for query."""
@@ -233,18 +241,30 @@ class RedisLogAPI:
             if ':level:' in sorted_set_key or ':refresh:' in sorted_set_key or ':step:' in sorted_set_key:
                 continue
 
-            # Get recent log keys from this sorted set
-            recent_log_keys = self.redis_client.zrevrange(sorted_set_key, 0, 100)
+            # Get recent log entries from this sorted set (JSON format)
+            recent_log_entries = self.redis_client.zrevrange(sorted_set_key, 0, 100)
 
-            for log_key in recent_log_keys:
-                log_data = self.redis_client.hgetall(log_key)
-                if log_data and query.lower() in log_data.get('message', '').lower():
-                    # Enrich log data with application, component, and host from key
-                    enriched_log = self._enrich_log_data(log_data, log_key)
-                    search_results.append(enriched_log)
+            # Extract host, app, component from sorted set key
+            key_parts = sorted_set_key.split(':')
+            if len(key_parts) >= 4:
+                set_host = key_parts[1]
+                set_app = key_parts[2]
+                set_component = key_parts[3]
+            else:
+                continue
 
-                    if len(search_results) >= limit:
-                        break
+            for log_json in recent_log_entries:
+                try:
+                    log_data = json.loads(log_json)
+                    if log_data and query.lower() in log_data.get('message', '').lower():
+                        # Enrich log data with application, component, and host
+                        enriched_log = self._enrich_log_data_from_sorted_set(log_data, set_host, set_app, set_component)
+                        search_results.append(enriched_log)
+
+                        if len(search_results) >= limit:
+                            break
+                except json.JSONDecodeError:
+                    continue
 
             if len(search_results) >= limit:
                 break
@@ -275,6 +295,17 @@ class RedisLogAPI:
             enriched_data['host'] = 'unknown'
             enriched_data['application'] = 'unknown'
             enriched_data['component'] = 'unknown'
+
+        return enriched_data
+
+    def _enrich_log_data_from_sorted_set(self, log_data: Dict, host: str, app: str, component: str) -> Dict:
+        """Enrich log data from sorted set with known host, app, component."""
+        enriched_data = dict(log_data)  # Copy original data
+
+        # Add the known metadata
+        enriched_data['host'] = host
+        enriched_data['application'] = app
+        enriched_data['component'] = component
 
         return enriched_data
 
