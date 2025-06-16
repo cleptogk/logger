@@ -43,13 +43,13 @@ class RedisLogAPI:
                  search_query: str = None, limit: int = 100, offset: int = 0) -> Dict:
         """Get logs from Redis with advanced filtering."""
         
-        # Build Redis key pattern - Fixed: was "logs:" should be "log:"
+        # Build Redis key pattern for sorted sets
         if app and component:
-            base_key = f"log:{host}:{app}:{component}:*"  # Fixed: Add wildcard for component filtering
+            base_key = f"logs:{host}:{app}:{component}"  # Direct sorted set key (no wildcard needed)
         elif app:
-            base_key = f"log:{host}:{app}:*"
+            base_key = f"logs:{host}:{app}:*"  # Wildcard for multiple components
         else:
-            base_key = f"log:{host}:*"
+            base_key = f"logs:{host}:*"  # Wildcard for all apps
         
         # Apply filters to build specific key
         query_key = base_key
@@ -77,12 +77,12 @@ class RedisLogAPI:
         
         try:
             # Get log entry keys from sorted set
-            if '*' in query_key:
+            if '*' in base_key:
                 # Handle wildcard queries - use sorted sets instead of scanning individual keys
                 log_keys = self._get_wildcard_logs_from_sorted_sets(base_key, start_score, end_score, limit + offset)
             else:
-                # Direct key query using sorted sets (much more efficient)
-                sorted_set_key = f"logs:{host}:{app}:{component}"
+                # Direct sorted set query (most efficient)
+                sorted_set_key = base_key  # base_key is already the correct sorted set key
                 log_keys = self.redis_client.zrevrangebyscore(
                     sorted_set_key, end_score, start_score,
                     start=offset, num=limit
@@ -182,9 +182,8 @@ class RedisLogAPI:
         """Get logs from sorted sets - much more efficient than scanning individual keys."""
         all_entries = []
 
-        # Convert pattern to sorted set key pattern
-        # From: log:host:app:* to logs:host:app:*
-        sorted_set_pattern = pattern.replace('log:', 'logs:', 1)
+        # Pattern is already in correct format (logs:host:app:*)
+        sorted_set_pattern = pattern
 
         # Find all matching sorted sets
         for sorted_set_key in self.redis_client.scan_iter(match=sorted_set_pattern):
