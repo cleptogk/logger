@@ -270,7 +270,7 @@ function setupEventListeners() {
         if ($('#autoRefresh').is(':checked') && currentLogs.length > 0) {
             performSearch();
         }
-    }, 30000);
+    }, 300000);  // 5 minutes
 }
 
 function populateFormFromURL(urlParams) {

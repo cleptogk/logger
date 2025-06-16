@@ -4,7 +4,7 @@
 let socket = null;
 let charts = {};
 let settings = {
-    refreshInterval: 5,
+    refreshInterval: 300,  // 5 minutes
     maxLogEntries: 100,
     autoRefresh: true,
     soundAlerts: false

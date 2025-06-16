@@ -252,12 +252,12 @@
 if (typeof settings !== 'undefined') {
     // Update existing settings object
     settings.autoRefresh = true;
-    settings.refreshInterval = 30;  // seconds (increased from 5 to reduce refresh frequency)
+    settings.refreshInterval = 300;  // 5 minutes (increased to reduce refresh frequency)
 } else {
     // Fallback if settings doesn't exist
     window.settings = {
         autoRefresh: true,
-        refreshInterval: 30
+        refreshInterval: 300  // 5 minutes
     };
 }
 

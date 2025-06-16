@@ -302,12 +302,12 @@ function initializeMetrics() {
 }
 
 function startMetricsUpdates() {
-    // Update metrics every 60 seconds
+    // Update metrics every 5 minutes
     setInterval(function() {
         if (settings.autoRefresh) {
             loadMetricsData();
         }
-    }, 60000);
+    }, 300000);  // 5 minutes
 }
 
 function loadMetricsData() {
