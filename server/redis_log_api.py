@@ -118,30 +118,47 @@ class RedisLogAPI:
             return {'logs': [], 'total': 0, 'error': str(e)}
 
     def _get_wildcard_logs(self, pattern: str, start_score, end_score, limit: int) -> List[str]:
-        """Handle wildcard queries by scanning individual log keys."""
+        """Handle wildcard queries by scanning individual log keys efficiently."""
         all_keys = []
+        count = 0
+        max_scan = limit * 10  # Limit scanning to avoid timeouts
 
-        # Scan for individual log entries directly
+        # Scan for individual log entries directly but limit the scan
         for log_key in self.redis_client.scan_iter(match=pattern):
+            if count >= max_scan:
+                break
+
             if ':level:' in log_key or ':refresh:' in log_key or ':step:' in log_key:
                 continue  # Skip filter keys
 
-            # Extract timestamp from log data to filter by time range
-            log_data = self.redis_client.hgetall(log_key)
-            if log_data and 'timestamp' in log_data:
-                try:
-                    timestamp = datetime.fromisoformat(log_data['timestamp'])
-                    score = int(timestamp.timestamp())
+            count += 1
 
-                    # Check if within time range
-                    if start_score <= score <= (end_score if end_score != '+inf' else float('inf')):
-                        all_keys.append((log_key, score))
-                except:
-                    # If timestamp parsing fails, include the log anyway
-                    all_keys.append((log_key, 0))
+            # For efficiency, if no time filter is specified, just take recent keys
+            if start_score == 0 and end_score == '+inf':
+                all_keys.append((log_key, 0))
+                if len(all_keys) >= limit:
+                    break
+            else:
+                # Only check timestamp if time filtering is needed
+                log_data = self.redis_client.hgetall(log_key)
+                if log_data and 'timestamp' in log_data:
+                    try:
+                        timestamp = datetime.fromisoformat(log_data['timestamp'])
+                        score = int(timestamp.timestamp())
 
-        # Sort by timestamp (newest first) and limit
-        all_keys.sort(key=lambda x: x[1], reverse=True)
+                        # Check if within time range
+                        if start_score <= score <= (end_score if end_score != '+inf' else float('inf')):
+                            all_keys.append((log_key, score))
+                    except:
+                        # If timestamp parsing fails, include the log anyway
+                        all_keys.append((log_key, 0))
+
+        # Sort by key name (which includes timestamp) for efficiency if no time filtering
+        if start_score == 0 and end_score == '+inf':
+            all_keys.sort(key=lambda x: x[0], reverse=True)
+        else:
+            all_keys.sort(key=lambda x: x[1], reverse=True)
+
         return [key for key, score in all_keys[:limit]]
 
     def _generate_cache_key(self, query_key: str, start_score, end_score, limit: int, offset: int) -> str:
