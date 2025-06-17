@@ -930,7 +930,7 @@ def get_workflow_details(refresh_id):
 
         if response.status_code == 200:
             data = response.json()
-            all_results = data.get('results', [])
+            all_results = data.get('logs', [])  # Redis API returns 'logs', not 'results'
 
             # Filter results to only include logs for this specific refresh ID
             filtered_results = []
