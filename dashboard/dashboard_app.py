@@ -939,8 +939,10 @@ def get_workflow_details(refresh_id):
                 metadata = log_entry.get('metadata', {})
 
                 # Check if this log entry belongs to the requested refresh ID
+                # Check both top-level refresh_id field and metadata
                 if (refresh_id in message or
-                    metadata.get('refresh_id') == refresh_id):
+                    metadata.get('refresh_id') == refresh_id or
+                    log_entry.get('refresh_id') == refresh_id):
                     filtered_results.append(log_entry)
 
             logger.info(f"Found {len(filtered_results)} log entries for {refresh_id}")
