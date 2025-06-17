@@ -219,8 +219,27 @@ def get_dashboard_stats():
 
         for log in logs_list:
             host = log.get('host', 'unknown')
-            application = log.get('application') or 'system'
-            component = log.get('component') or 'general'
+
+            # For structured logs, extract application/component from file path if not present
+            application = log.get('application')
+            component = log.get('component')
+
+            if not application or not component:
+                file_path = log.get('file_path', '')
+                if 'sports-scheduler' in file_path:
+                    application = 'sports-scheduler'
+                    if 'iptv-orchestrator' in file_path:
+                        component = 'iptv-orchestrator'
+                    elif 'automated-recording' in file_path:
+                        component = 'automated-recording'
+                    else:
+                        component = 'general'
+                elif 'system.log' in file_path:
+                    application = 'system'
+                    component = 'rsyslog'
+                else:
+                    application = application or 'system'
+                    component = component or 'general'
 
             source_key = f"{host}/{application}/{component}"
             if source_key not in source_stats:
