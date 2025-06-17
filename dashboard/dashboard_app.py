@@ -839,7 +839,7 @@ def get_latest_recording_info():
             return {'name': 'Unknown', 'time': 'Unknown', 'status': 'Unknown'}
 
         data = response.json()
-        logs = data.get('results', [])
+        logs = data.get('logs', [])  # Redis API returns 'logs', not 'results'
 
         # Look for the most recent recording information
         latest_recording = None
