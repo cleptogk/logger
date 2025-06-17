@@ -572,8 +572,8 @@ def analyze_orchestrator_runs(logs):
 
                 # Check for step completion/failure
                 step_status = metadata.get('step_status')
-                if step_status == 'completed' and metadata.get('step_number') == 8:
-                    # Step 8 completion means workflow completed
+                if step_status == 'completed' and metadata.get('step_number') == 9:
+                    # Step 9 completion means workflow completed
                     completed_refreshes.add(refresh_id)
                 elif step_status == 'failed':
                     failed_refreshes.add(refresh_id)
@@ -1081,7 +1081,7 @@ def process_workflow_data(log_results):
             step_number = metadata.get('step_number')
             if not step_number and 'Step ' in message:
                 import re
-                match = re.search(r'Step (\d+)/8', message)
+                match = re.search(r'Step (\d+)/\d+', message)  # Support both /8 and /9
                 if match:
                     step_number = int(match.group(1))
 
@@ -1129,7 +1129,7 @@ def process_workflow_data(log_results):
 
         if failed_steps:
             workflow['status'] = 'failed'
-        elif len(completed_steps) >= 8:
+        elif len(completed_steps) >= 9:  # Updated to 9 steps for IPTV orchestrator
             workflow['status'] = 'completed'
         else:
             workflow['status'] = 'in_progress'
@@ -1152,11 +1152,21 @@ def process_workflow_steps(log_results):
         metadata = log_entry.get('metadata', {})
         message = log_entry.get('message', '')
 
-        # Get step number from metadata or parse from message
-        step_number = metadata.get('step_number')
+        # Get step number from step_name or parse from message
+        step_number = None
+
+        # First try to extract from step_name (e.g., "step1-purge_xtream" -> 1)
+        step_name = log_entry.get('step_name', '')
+        if step_name and step_name.startswith('step'):
+            import re
+            match = re.search(r'step(\d+)', step_name)
+            if match:
+                step_number = int(match.group(1))
+
+        # Fallback: parse from message (support both /8 and /9 patterns)
         if not step_number and 'Step ' in message:
             import re
-            match = re.search(r'Step (\d+)/8', message)
+            match = re.search(r'Step (\d+)/\d+', message)
             if match:
                 step_number = int(match.group(1))
 
@@ -1174,7 +1184,7 @@ def process_workflow_steps(log_results):
                     step_status = 'unknown'
 
             # Get duration from metadata or parse from message
-            duration = metadata.get('duration_seconds')
+            duration = metadata.get('duration_seconds', 0)
             if not duration and 'in ' in message and 'seconds' in message:
                 import re
                 match = re.search(r'in ([\d.]+) seconds', message)
@@ -1211,7 +1221,7 @@ def determine_workflow_status(workflow_steps):
         return 'failed'
 
     completed_steps = [step for step in workflow_steps if step.get('status') == 'completed']
-    if len(completed_steps) >= 8:  # All 8 steps completed
+    if len(completed_steps) >= 9:  # All 9 steps completed
         return 'completed'
 
     return 'in_progress'
