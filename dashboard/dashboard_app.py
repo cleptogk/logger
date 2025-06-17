@@ -213,10 +213,37 @@ def get_dashboard_stats():
             level = log.get('level', 'UNKNOWN')
             level_distribution[level] = level_distribution.get(level, 0) + 1
 
+        # Calculate active sources from log data
+        active_sources = []
+        source_stats = {}
+
+        for log in logs_list:
+            host = log.get('host', 'unknown')
+            application = log.get('application') or 'system'
+            component = log.get('component') or 'general'
+
+            source_key = f"{host}/{application}/{component}"
+            if source_key not in source_stats:
+                source_stats[source_key] = {
+                    'host': host,
+                    'application': application,
+                    'component': component,
+                    'log_count': 0,
+                    'last_seen': log.get('timestamp', '')
+                }
+            source_stats[source_key]['log_count'] += 1
+
+            # Update last seen if this log is more recent
+            if log.get('timestamp', '') > source_stats[source_key]['last_seen']:
+                source_stats[source_key]['last_seen'] = log.get('timestamp', '')
+
+        # Convert to list and sort by log count
+        active_sources = sorted(source_stats.values(), key=lambda x: x['log_count'], reverse=True)
+
         analytics = {
             'level_distribution': level_distribution,
-            'active_sources': api_stats.get('active_sources', []),
-            'ingestion_rate': api_stats.get('ingestion_rate', 0),
+            'active_sources': active_sources,
+            'ingestion_rate': len(logs_list),  # Logs per query as ingestion rate
             'recent_logs': logs_list[:10]  # Last 10 logs for recent activity
         }
 
