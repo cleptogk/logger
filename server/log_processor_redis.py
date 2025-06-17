@@ -40,13 +40,28 @@ class RedisLogProcessor:
         self.max_lines_per_file = int(os.environ.get('MAX_LINES_PER_FILE', 5000))
         self.max_file_size = int(os.environ.get('MAX_FILE_SIZE_MB', 50)) * 1024 * 1024
         
-        # Redis key patterns
+        # Redis key patterns - updated to match file structure
         self.keys = {
             'logs': 'logs:{host}:{app}:{component}',
+            'step_logs': 'logs:{host}:{app}:{component}:{refresh_id}:{step_name}',
+            'refresh_logs': 'logs:{host}:{app}:{component}:{refresh_id}:all',
             'index': 'logs:index:{host}',
             'metadata': 'logs:meta:{host}:{file_hash}',
             'stats': 'logs:stats:{host}:{app}',
             'search': 'logs:search:{query_hash}'
+        }
+
+        # Step name mapping for IPTV orchestrator
+        self.step_names = {
+            '1': 'step1-purge_xtream',
+            '2': 'step2-refresh_channels',
+            '3': 'step3-refresh_xtream_epg',
+            '4': 'step4-purge_epg_db',
+            '5': 'step5-refresh_epg_db',
+            '6': 'step6-generate_playlist',
+            '7': 'step7-refresh_channels_dvr',
+            '8': 'step8-automated_recordings',
+            '9': 'step9-create_collections'
         }
         
         logger.info(f"Redis Log Processor initialized - TTL: {self.log_ttl}s, Max lines: {self.max_lines_per_file}")
@@ -168,6 +183,13 @@ class RedisLogProcessor:
 
     def _extract_component_name(self, file_path: Path) -> str:
         """Extract component name from file path."""
+        path_parts = file_path.parts
+
+        # For new structured IPTV orchestrator logs: /var/log/centralized/ssdev/sports-scheduler/iptv-orchestrator/123/step1-purge_xtream.log
+        if 'iptv-orchestrator' in path_parts:
+            return 'iptv-orchestrator'
+
+        # For legacy flat structure, check filename
         filename = file_path.name
         if 'iptv-orchestrator' in filename:
             return 'iptv-orchestrator'
@@ -180,6 +202,25 @@ class RedisLogProcessor:
         elif 'api' in filename:
             return 'api'
         return 'general'
+
+    def _extract_refresh_id_and_step(self, file_path: Path) -> tuple:
+        """Extract refresh_id and step_name from file path for structured IPTV orchestrator logs."""
+        path_parts = file_path.parts
+
+        # Check if this is a structured IPTV orchestrator log
+        # Path format: /var/log/centralized/ssdev/sports-scheduler/iptv-orchestrator/123/step1-purge_xtream.log
+        try:
+            if 'iptv-orchestrator' in path_parts:
+                iptv_index = path_parts.index('iptv-orchestrator')
+                if iptv_index + 2 < len(path_parts):
+                    refresh_id = path_parts[iptv_index + 1]
+                    step_filename = path_parts[iptv_index + 2]
+                    step_name = step_filename.replace('.log', '')
+                    return refresh_id, step_name
+        except (ValueError, IndexError):
+            pass
+
+        return None, None
 
     def _parse_log_line(self, line: str, file_path: Path, line_num: int) -> Optional[Dict]:
         """Parse a single log line into structured data."""
@@ -214,13 +255,19 @@ class RedisLogProcessor:
         level_match = re.search(r'\b(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b', line, re.IGNORECASE)
         level = level_match.group(1).upper() if level_match else 'INFO'
 
-        # Extract refresh ID
-        refresh_match = re.search(r'\[Refresh-(\d+)\]', line)
-        refresh_id = refresh_match.group(1) if refresh_match else None
+        # Extract refresh_id and step_name from file path (for structured logs)
+        refresh_id, step_name = self._extract_refresh_id_and_step(file_path)
 
-        # Extract step information
-        step_match = re.search(r'step\s*(\d+)(?:/8)?', line, re.IGNORECASE)
-        step = step_match.group(1) if step_match else None
+        # Fallback: Extract refresh ID from message (for legacy logs)
+        if not refresh_id:
+            refresh_match = re.search(r'\[Refresh-(\d+)\]', line)
+            refresh_id = refresh_match.group(1) if refresh_match else None
+
+        # Fallback: Extract step information from message (for legacy logs)
+        step = None
+        if not step_name:
+            step_match = re.search(r'step\s*(\d+)(?:/[89])?', line, re.IGNORECASE)
+            step = step_match.group(1) if step_match else None
 
         return {
             'timestamp': timestamp.isoformat(),
@@ -230,11 +277,12 @@ class RedisLogProcessor:
             'line_number': line_num,
             'refresh_id': refresh_id,
             'step': step,
+            'step_name': step_name,
             'indexed_at': datetime.now().isoformat()
         }
 
     def _store_log_entry(self, log_entry: Dict, host: str, app: str, component: str):
-        """Store log entry in Redis using only sorted sets - much more efficient."""
+        """Store log entry in Redis using new structured key format."""
         # Clean log entry - remove None values
         clean_entry = {}
         for key, value in log_entry.items():
@@ -245,32 +293,62 @@ class RedisLogProcessor:
         log_json = json.dumps(clean_entry)
         timestamp_score = int(datetime.fromisoformat(clean_entry['timestamp']).timestamp())
 
-        # Store ONLY in sorted sets - no individual hash keys
-        # Main component sorted set
+        # Check if this is a structured IPTV orchestrator log
+        is_structured_iptv = (component == 'iptv-orchestrator' and
+                             clean_entry.get('refresh_id') and
+                             clean_entry.get('step_name'))
+
+        if is_structured_iptv:
+            # Use new structured key format for IPTV orchestrator step logs
+            refresh_id = clean_entry['refresh_id']
+            step_name = clean_entry['step_name']
+
+            # Step-specific key: logs:host:app:component:refresh_id:step_name
+            step_key = self.keys['step_logs'].format(
+                host=host, app=app, component=component,
+                refresh_id=refresh_id, step_name=step_name
+            )
+            self.redis_client.zadd(step_key, {log_json: timestamp_score})
+            self.redis_client.expire(step_key, self.log_ttl)
+            self.redis_client.zremrangebyrank(step_key, 0, -1001)  # Keep last 1,000 per step
+
+            # Refresh-wide aggregation: logs:host:app:component:refresh_id:all
+            refresh_key = self.keys['refresh_logs'].format(
+                host=host, app=app, component=component, refresh_id=refresh_id
+            )
+            self.redis_client.zadd(refresh_key, {log_json: timestamp_score})
+            self.redis_client.expire(refresh_key, self.log_ttl)
+            self.redis_client.zremrangebyrank(refresh_key, 0, -5001)  # Keep last 5,000 per refresh
+
+            # Level-based filtering within step
+            step_level_key = f"{step_key}:level:{clean_entry['level']}"
+            self.redis_client.zadd(step_level_key, {log_json: timestamp_score})
+            self.redis_client.expire(step_level_key, self.log_ttl)
+            self.redis_client.zremrangebyrank(step_level_key, 0, -501)  # Keep last 500 per step/level
+
+        # Always store in legacy format for backward compatibility
         index_key = self.keys['logs'].format(host=host, app=app, component=component)
         self.redis_client.zadd(index_key, {log_json: timestamp_score})
         self.redis_client.expire(index_key, self.log_ttl)
-
-        # Keep only recent entries in each sorted set to prevent unlimited growth
         self.redis_client.zremrangebyrank(index_key, 0, -10001)  # Keep last 10,000 entries
 
-        # Index by level for filtering (optional - only if needed for UI)
+        # Legacy level indexing
         level_key = f"{index_key}:level:{clean_entry['level']}"
         self.redis_client.zadd(level_key, {log_json: timestamp_score})
         self.redis_client.expire(level_key, self.log_ttl)
         self.redis_client.zremrangebyrank(level_key, 0, -1001)  # Keep last 1,000 per level
 
-        # Index by refresh_id if present (for IPTV orchestrator workflow tracking)
+        # Legacy refresh_id indexing (for backward compatibility)
         if clean_entry.get('refresh_id'):
-            refresh_key = f"{index_key}:refresh:{clean_entry['refresh_id']}"
-            self.redis_client.zadd(refresh_key, {log_json: timestamp_score})
-            self.redis_client.expire(refresh_key, self.log_ttl)
+            legacy_refresh_key = f"{index_key}:refresh:{clean_entry['refresh_id']}"
+            self.redis_client.zadd(legacy_refresh_key, {log_json: timestamp_score})
+            self.redis_client.expire(legacy_refresh_key, self.log_ttl)
 
-        # Index by step if present (for IPTV orchestrator step tracking)
+        # Legacy step indexing (for backward compatibility)
         if clean_entry.get('step'):
-            step_key = f"{index_key}:step:{clean_entry['step']}"
-            self.redis_client.zadd(step_key, {log_json: timestamp_score})
-            self.redis_client.expire(step_key, self.log_ttl)
+            legacy_step_key = f"{index_key}:step:{clean_entry['step']}"
+            self.redis_client.zadd(legacy_step_key, {log_json: timestamp_score})
+            self.redis_client.expire(legacy_step_key, self.log_ttl)
 
         # Update statistics
         stats_key = self.keys['stats'].format(host=host, app=app)

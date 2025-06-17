@@ -352,6 +352,21 @@ class RedisLogAPI:
 
         return enriched_data
 
+    def _get_step_name_suffix(self, step_num: int) -> str:
+        """Get step name suffix for structured logging."""
+        step_names = {
+            1: 'purge_xtream',
+            2: 'refresh_channels',
+            3: 'refresh_xtream_epg',
+            4: 'purge_epg_db',
+            5: 'refresh_epg_db',
+            6: 'generate_playlist',
+            7: 'refresh_channels_dvr',
+            8: 'automated_recordings',
+            9: 'create_collections'
+        }
+        return step_names.get(step_num, f'step{step_num}')
+
 # Initialize Redis API
 redis_api = RedisLogAPI()
 
@@ -458,6 +473,196 @@ def get_host_stats_redis(host):
     app = request.args.get('app')
     result = redis_api.get_stats(host, app)
     return jsonify(result)
+
+@app.route('/logger/iptv-refresh/redis/<host>/<refresh_id>')
+def get_iptv_refresh_logs_redis(host, refresh_id):
+    """Get all logs for a specific IPTV refresh workflow using Redis backend.
+    Format: /logger/iptv-refresh/redis/ssdev/123?step=1&level=ERROR"""
+    try:
+        step = request.args.get('step')
+        level = request.args.get('level')
+        limit = min(int(request.args.get('limit', 500)), 1000)
+
+        # Use new structured Redis keys for IPTV orchestrator
+        if step:
+            # Get logs for specific step: logs:host:app:component:refresh_id:step_name
+            step_name = f"step{step}-" + redis_api._get_step_name_suffix(int(step))
+            step_key = f"logs:{host}:sports-scheduler:iptv-orchestrator:{refresh_id}:{step_name}"
+
+            # Try to get logs from step-specific key
+            log_entries = redis_api.redis_client.zrevrange(step_key, 0, limit - 1)
+
+            if not log_entries:
+                # Fallback to legacy format
+                result = redis_api.get_logs(
+                    host=host,
+                    app='sports-scheduler',
+                    component='iptv-orchestrator',
+                    refresh_id=f'Refresh-{refresh_id}',
+                    step=step,
+                    level=level,
+                    limit=limit
+                )
+                result['source'] = 'legacy'
+                return jsonify(result)
+        else:
+            # Get all logs for refresh: logs:host:app:component:refresh_id:all
+            refresh_key = f"logs:{host}:sports-scheduler:iptv-orchestrator:{refresh_id}:all"
+            log_entries = redis_api.redis_client.zrevrange(refresh_key, 0, limit - 1)
+
+            if not log_entries:
+                # Fallback to legacy format
+                result = redis_api.get_logs(
+                    host=host,
+                    app='sports-scheduler',
+                    component='iptv-orchestrator',
+                    refresh_id=f'Refresh-{refresh_id}',
+                    level=level,
+                    limit=limit
+                )
+                result['source'] = 'legacy'
+                return jsonify(result)
+
+        # Process structured log entries
+        logs = []
+        steps_summary = {}
+
+        for log_json in log_entries:
+            try:
+                log_data = json.loads(log_json)
+
+                # Apply level filtering
+                if level and log_data.get('level') != level.upper():
+                    continue
+
+                # Enrich with metadata
+                enriched_log = {
+                    **log_data,
+                    'host': host,
+                    'application': 'sports-scheduler',
+                    'component': 'iptv-orchestrator',
+                    'refresh_id': refresh_id,
+                    'source': 'structured'
+                }
+
+                logs.append(enriched_log)
+
+                # Build steps summary
+                step_name = log_data.get('step_name', 'unknown')
+                if step_name not in steps_summary:
+                    steps_summary[step_name] = {
+                        'log_count': 0,
+                        'error_count': 0,
+                        'latest_timestamp': None
+                    }
+
+                steps_summary[step_name]['log_count'] += 1
+                if log_data.get('level') == 'ERROR':
+                    steps_summary[step_name]['error_count'] += 1
+
+                if not steps_summary[step_name]['latest_timestamp']:
+                    steps_summary[step_name]['latest_timestamp'] = log_data.get('timestamp')
+
+            except json.JSONDecodeError:
+                continue
+
+        result = {
+            'host': host,
+            'refresh_id': refresh_id,
+            'step_filter': step,
+            'level_filter': level,
+            'source': 'structured',
+            'steps_summary': steps_summary,
+            'total_logs': len(logs),
+            'logs': logs,
+            'query_time': datetime.now().isoformat()
+        }
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'host': host, 'refresh_id': refresh_id}), 500
+
+@app.route('/logger/iptv-step/redis/<host>/<refresh_id>/<step_name>')
+def get_iptv_step_logs_redis(host, refresh_id, step_name):
+    """Get logs for a specific IPTV orchestrator step using Redis backend.
+    Format: /logger/iptv-step/redis/ssdev/123/step1-purge_xtream?level=ERROR"""
+    try:
+        level = request.args.get('level')
+        limit = min(int(request.args.get('limit', 200)), 500)
+
+        # Use structured Redis key: logs:host:app:component:refresh_id:step_name
+        step_key = f"logs:{host}:sports-scheduler:iptv-orchestrator:{refresh_id}:{step_name}"
+
+        # Get logs from step-specific sorted set
+        log_entries = redis_api.redis_client.zrevrange(step_key, 0, limit - 1)
+
+        if not log_entries:
+            return jsonify({'error': f'No logs found for step {step_name} in refresh {refresh_id}', 'host': host, 'refresh_id': refresh_id, 'step_name': step_name}), 404
+
+        # Process log entries
+        logs = []
+        stats = {
+            'total_logs': 0,
+            'error_count': 0,
+            'warning_count': 0,
+            'info_count': 0,
+            'debug_count': 0,
+            'latest_timestamp': None,
+            'oldest_timestamp': None
+        }
+
+        for log_json in log_entries:
+            try:
+                log_data = json.loads(log_json)
+
+                # Apply level filtering
+                if level and log_data.get('level') != level.upper():
+                    continue
+
+                # Enrich with metadata
+                enriched_log = {
+                    **log_data,
+                    'host': host,
+                    'application': 'sports-scheduler',
+                    'component': 'iptv-orchestrator',
+                    'refresh_id': refresh_id,
+                    'step_name': step_name,
+                    'source': 'structured'
+                }
+
+                logs.append(enriched_log)
+
+                # Update statistics
+                stats['total_logs'] += 1
+                log_level = log_data.get('level', 'INFO')
+                stats[f'{log_level.lower()}_count'] += 1
+
+                timestamp = log_data.get('timestamp')
+                if timestamp:
+                    if not stats['latest_timestamp'] or timestamp > stats['latest_timestamp']:
+                        stats['latest_timestamp'] = timestamp
+                    if not stats['oldest_timestamp'] or timestamp < stats['oldest_timestamp']:
+                        stats['oldest_timestamp'] = timestamp
+
+            except json.JSONDecodeError:
+                continue
+
+        result = {
+            'host': host,
+            'refresh_id': refresh_id,
+            'step_name': step_name,
+            'level_filter': level,
+            'source': 'structured',
+            'stats': stats,
+            'logs': logs,
+            'query_time': datetime.now().isoformat()
+        }
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'host': host, 'refresh_id': refresh_id, 'step_name': step_name}), 500
 
 def parse_time_filter(time_str):
     """Parse time filter string - simplified version."""

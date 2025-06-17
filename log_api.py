@@ -966,6 +966,222 @@ def get_iptv_orchestrator_logs(host):
     except Exception as e:
         return jsonify({'error': str(e), 'host': host}), 500
 
+@app.route('/logger/iptv-refresh/<host>/<refresh_id>')
+def get_iptv_refresh_logs(host, refresh_id):
+    """Get all logs for a specific IPTV refresh workflow.
+    Format: /logger/iptv-refresh/ssdev/123?step=1&level=ERROR"""
+    try:
+        step = request.args.get('step', 'all')
+        level_filter = request.args.get('level', 'all')
+        limit = int(request.args.get('limit', 500))
+
+        # Check for structured logs first (new format)
+        structured_log_dir = Path(f'/var/log/centralized/{host}/sports-scheduler/iptv-orchestrator/{refresh_id}')
+        logs = []
+
+        if structured_log_dir.exists():
+            # Read from structured step-specific files
+            for step_file in structured_log_dir.glob('step*.log'):
+                step_name = step_file.stem  # e.g., 'step1-purge_xtream'
+                step_number = step_name.split('-')[0].replace('step', '')
+
+                # Apply step filtering
+                if step != 'all' and step_number != str(step):
+                    continue
+
+                try:
+                    with open(step_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        for line_num, line in enumerate(f):
+                            line = line.strip()
+                            if not line:
+                                continue
+
+                            # Extract log level
+                            level = 'INFO'
+                            line_lower = line.lower()
+                            if any(word in line_lower for word in ['error', 'exception', 'failed', 'critical']):
+                                level = 'ERROR'
+                            elif any(word in line_lower for word in ['warn', 'warning']):
+                                level = 'WARNING'
+                            elif any(word in line_lower for word in ['debug', 'trace']):
+                                level = 'DEBUG'
+
+                            # Apply level filtering
+                            if level_filter != 'all' and level != level_filter.upper():
+                                continue
+
+                            # Extract timestamp
+                            log_timestamp = extract_timestamp_from_log_line(line)
+
+                            log_entry = {
+                                'timestamp': log_timestamp.isoformat(),
+                                'host': host,
+                                'application': 'sports-scheduler',
+                                'component': 'iptv-orchestrator',
+                                'refresh_id': refresh_id,
+                                'step_number': int(step_number),
+                                'step_name': step_name,
+                                'level': level,
+                                'message': line,
+                                'file_path': str(step_file),
+                                'line_number': line_num + 1,
+                                'source': 'structured'
+                            }
+
+                            logs.append(log_entry)
+
+                            if len(logs) >= limit:
+                                break
+
+                except Exception as e:
+                    print(f"Error reading {step_file}: {e}")
+
+                if len(logs) >= limit:
+                    break
+
+        # Fallback to legacy format if no structured logs found
+        if not logs:
+            logs = read_logs_with_filters(
+                host=host,
+                application='sports-scheduler',
+                component='iptv-orchestrator',
+                refresh_id=f'Refresh-{refresh_id}',
+                limit=limit,
+                level_filter=level_filter
+            )
+            for log in logs:
+                log['source'] = 'legacy'
+
+        # Sort by timestamp (newest first)
+        logs.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # Organize by steps
+        steps_summary = {}
+        for log in logs:
+            step_key = log.get('step_name', f"step{log.get('step_number', 'unknown')}")
+            if step_key not in steps_summary:
+                steps_summary[step_key] = {
+                    'step_number': log.get('step_number'),
+                    'log_count': 0,
+                    'error_count': 0,
+                    'latest_timestamp': None
+                }
+
+            steps_summary[step_key]['log_count'] += 1
+            if log.get('level') == 'ERROR':
+                steps_summary[step_key]['error_count'] += 1
+
+            if not steps_summary[step_key]['latest_timestamp']:
+                steps_summary[step_key]['latest_timestamp'] = log['timestamp']
+
+        response = {
+            'host': host,
+            'refresh_id': refresh_id,
+            'step_filter': step,
+            'level_filter': level_filter,
+            'source': 'structured' if structured_log_dir.exists() else 'legacy',
+            'steps_summary': steps_summary,
+            'total_logs': len(logs),
+            'logs': logs[:limit],
+            'query_time': datetime.now().isoformat()
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'host': host, 'refresh_id': refresh_id}), 500
+
+@app.route('/logger/iptv-step/<host>/<refresh_id>/<step_name>')
+def get_iptv_step_logs(host, refresh_id, step_name):
+    """Get logs for a specific IPTV orchestrator step.
+    Format: /logger/iptv-step/ssdev/123/step1-purge_xtream?level=ERROR"""
+    try:
+        level_filter = request.args.get('level', 'all')
+        limit = int(request.args.get('limit', 200))
+
+        # Try structured log file first
+        step_file = Path(f'/var/log/centralized/{host}/sports-scheduler/iptv-orchestrator/{refresh_id}/{step_name}.log')
+        logs = []
+
+        if step_file.exists():
+            try:
+                with open(step_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    for line_num, line in enumerate(f):
+                        line = line.strip()
+                        if not line:
+                            continue
+
+                        # Extract log level
+                        level = 'INFO'
+                        line_lower = line.lower()
+                        if any(word in line_lower for word in ['error', 'exception', 'failed', 'critical']):
+                            level = 'ERROR'
+                        elif any(word in line_lower for word in ['warn', 'warning']):
+                            level = 'WARNING'
+                        elif any(word in line_lower for word in ['debug', 'trace']):
+                            level = 'DEBUG'
+
+                        # Apply level filtering
+                        if level_filter != 'all' and level != level_filter.upper():
+                            continue
+
+                        # Extract timestamp
+                        log_timestamp = extract_timestamp_from_log_line(line)
+
+                        log_entry = {
+                            'timestamp': log_timestamp.isoformat(),
+                            'host': host,
+                            'application': 'sports-scheduler',
+                            'component': 'iptv-orchestrator',
+                            'refresh_id': refresh_id,
+                            'step_name': step_name,
+                            'level': level,
+                            'message': line,
+                            'file_path': str(step_file),
+                            'line_number': line_num + 1,
+                            'source': 'structured'
+                        }
+
+                        logs.append(log_entry)
+
+                        if len(logs) >= limit:
+                            break
+
+            except Exception as e:
+                return jsonify({'error': f'Error reading step file: {e}', 'host': host, 'refresh_id': refresh_id, 'step_name': step_name}), 500
+        else:
+            return jsonify({'error': f'Step file not found: {step_file}', 'host': host, 'refresh_id': refresh_id, 'step_name': step_name}), 404
+
+        # Sort by timestamp (newest first)
+        logs.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # Calculate statistics
+        stats = {
+            'total_logs': len(logs),
+            'error_count': sum(1 for log in logs if log['level'] == 'ERROR'),
+            'warning_count': sum(1 for log in logs if log['level'] == 'WARNING'),
+            'info_count': sum(1 for log in logs if log['level'] == 'INFO'),
+            'debug_count': sum(1 for log in logs if log['level'] == 'DEBUG'),
+            'file_size': step_file.stat().st_size if step_file.exists() else 0,
+            'latest_timestamp': logs[0]['timestamp'] if logs else None,
+            'oldest_timestamp': logs[-1]['timestamp'] if logs else None
+        }
+
+        response = {
+            'host': host,
+            'refresh_id': refresh_id,
+            'step_name': step_name,
+            'level_filter': level_filter,
+            'stats': stats,
+            'logs': logs,
+            'query_time': datetime.now().isoformat()
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'host': host, 'refresh_id': refresh_id, 'step_name': step_name}), 500
+
 @app.route('/logger/search/<host>')
 def advanced_search(host):
     """Advanced search endpoint with full filtering capabilities.
