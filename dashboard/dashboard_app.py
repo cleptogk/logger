@@ -811,7 +811,7 @@ def get_current_workflows():
 
         if response.status_code == 200:
             data = response.json()
-            workflows = process_workflow_data(data.get('results', []))
+            workflows = process_workflow_data(data.get('logs', []))  # Redis API returns 'logs', not 'results'
             return workflows
         else:
             return []
