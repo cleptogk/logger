@@ -185,29 +185,31 @@ def workflow_analysis_page():
 def get_dashboard_stats():
     """Get dashboard statistics from enhanced logging API."""
     try:
-        # Get health status from enhanced logging API
+        # Get health status from Redis logging API
         health_response = requests.get(f"{logging_server_url}/health", timeout=5)
         health_data = health_response.json() if health_response.status_code == 200 else {}
 
-        # Get file information
-        files_response = requests.get(f"{logging_server_url}/logger/files", timeout=5)
-        files_data = files_response.json() if files_response.status_code == 200 else {}
-
-        # Get stats from the new /api/stats endpoint
-        stats_response = requests.get(f"{logging_server_url}/api/stats", timeout=10)
-        api_stats = stats_response.json() if stats_response.status_code == 200 else {}
-
-        # Get recent logs for additional processing - limit to reduce memory usage
-        recent_logs_response = requests.get(f"{logging_server_url}/api/logs?source=ssdev&limit=50", timeout=5)
+        # Get recent logs from Redis API for today's stats
+        recent_logs_response = requests.get(f"{logging_server_url}/logger/redis/ssdev?time=today&limit=100", timeout=10)
         recent_logs_data = recent_logs_response.json() if recent_logs_response.status_code == 200 else {}
         logs_list = recent_logs_data.get('logs', [])
 
-        # Use API stats or calculate from logs
-        total_logs_today = api_stats.get('total_logs_today', len(logs_list))
+        # Get file information (simplified)
+        files_data = {'total_files': len(set(log.get('file_path', '') for log in logs_list if log.get('file_path')))}
 
-        # Calculate level distribution from recent logs - limit processing
+        # Calculate API stats from actual log data
+        api_stats = {
+            'total_logs_today': len(logs_list),
+            'unique_applications': len(set(log.get('application', '') for log in logs_list if log.get('application'))),
+            'unique_components': len(set(log.get('component', '') for log in logs_list if log.get('component')))
+        }
+
+        # Use calculated stats from actual log data
+        total_logs_today = api_stats.get('total_logs_today', 0)
+
+        # Calculate level distribution from recent logs
         level_distribution = {}
-        for log in logs_list[:50]:  # Only process first 50 logs
+        for log in logs_list:
             level = log.get('level', 'UNKNOWN')
             level_distribution[level] = level_distribution.get(level, 0) + 1
 
